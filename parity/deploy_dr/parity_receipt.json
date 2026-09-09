@@ -1,0 +1,54 @@
+{
+  "kind": "deploy_parity_vectors",
+  "onnx": "/home/linjiw/lucid-sonic/artifacts/curriculum_comparison/curriculum_comparison_ne1024_20260908_122452/seed_8600/fixed_deploy/exported/model_step_008000_g1.onnx",
+  "onnx_sha256": "c10804f310fb4f93e8c3ce055e407e18624c9d67ee90122f552846b1cec7813a",
+  "clip": "/home/linjiw/lucid-sonic/pools/subsets/m3_long8s_a/robot_filtered/walk_arc_cw_stop_001__A047.pkl",
+  "lam": 0.0,
+  "seed": 1,
+  "steps": 120,
+  "obs_dim": 1570,
+  "action_dim": 29,
+  "control_hz": 50.0,
+  "joint_order": "IsaacLab",
+  "reset_convention": "root pose and joint positions from clip frame 0; root linear velocity from a one-frame finite difference at 50 Hz; root angular velocity from the body-frame quaternion delta; joint velocities from the clip. Reset WITH reference velocities.",
+  "obs_layout": [
+    [
+      "motion_joint_positions_10frame_step5",
+      290
+    ],
+    [
+      "motion_joint_velocities_10frame_step5",
+      290
+    ],
+    [
+      "motion_anchor_orientation_10frame_step5",
+      60
+    ],
+    [
+      "his_base_angular_velocity_10frame_step1",
+      30
+    ],
+    [
+      "his_body_joint_positions_10frame_step1",
+      290
+    ],
+    [
+      "his_body_joint_velocities_10frame_step1",
+      290
+    ],
+    [
+      "his_last_actions_10frame_step1",
+      290
+    ],
+    [
+      "his_gravity_dir_10frame_step1",
+      30
+    ]
+  ],
+  "verified": [
+    "observations and actions come from the same ONNX session the MuJoCo reference player uses"
+  ],
+  "not_verified": [
+    "that the C++ runner reproduces these actions -- that is the test these vectors exist to make possible, and it has never been run"
+  ]
+}

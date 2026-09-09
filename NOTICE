@@ -1,0 +1,52 @@
+lucid-g1-deploy
+Copyright 2026 linjiw
+
+This product bundles third-party components, redistributed under their own
+licenses. Each is unmodified unless noted.
+
+--------------------------------------------------------------------------------
+GR00T-WholeBodyControl / GEAR-SONIC                          Apache License 2.0
+NVIDIA Corporation
+https://github.com/NVIDIA/GR00T-WholeBodyControl
+
+  runner/          the C++ deployment runner (gear_sonic_deploy), unmodified
+  sim/gear_sonic_sim/  the MuJoCo/DDS simulator (gear_sonic/utils/mujoco_sim),
+                   with four documented changes -- see sim/VENDOR_PATCHES.md
+  sim/models/      the G1 MJCF model and meshes, unmodified
+  sim/wbc_configs/ the whole-body-control config, ROBOT_SCENE repointed only
+
+  Note: the upstream repository is dual-licensed, with model WEIGHTS under the
+  NVIDIA Open Model License. No upstream weights are redistributed here. The two
+  policies in policies/ were trained from scratch in this project.
+
+--------------------------------------------------------------------------------
+unitree_sdk2                                              BSD 3-Clause License
+Copyright (c) 2016-2023 HangZhou YuShu TECHNOLOGY CO.,LTD. ("Unitree Robotics")
+https://github.com/unitreerobotics/unitree_sdk2
+
+  runner/thirdparty/unitree_sdk2/     headers and prebuilt static libraries
+                                      for x86_64 and aarch64, unmodified
+  See runner/thirdparty/unitree_sdk2/LICENSE
+
+--------------------------------------------------------------------------------
+unitree_sdk2_python                                       BSD 3-Clause License
+Copyright (c) 2016-2023 HangZhou YuShu TECHNOLOGY CO.,LTD. ("Unitree Robotics")
+https://github.com/unitreerobotics/unitree_sdk2_python
+
+  sdk/unitree_sdk2py/    byte-identical to upstream
+  See sdk/UNITREE_SDK2PY_LICENSE
+
+--------------------------------------------------------------------------------
+Eclipse Cyclone DDS               Eclipse Public License 2.0 / EDL 1.0
+Eclipse Foundation
+https://github.com/eclipse-cyclonedds/cyclonedds
+
+  runner/thirdparty/unitree_sdk2/thirdparty/   headers and shared libraries,
+                                               version 0.10.2, unmodified
+  See runner/thirdparty/unitree_sdk2/licenses/eclipse-cyclonedds/
+
+--------------------------------------------------------------------------------
+Everything else in this repository -- the setup, build, test, evaluation and
+drill scripts, the tools/, the docs/, the observation config, the converted
+reference motions and the two exported policies -- is original to this project
+and is released under the Apache License 2.0 (see LICENSE).

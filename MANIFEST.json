@@ -1,0 +1,86 @@
+{
+  "kind": "lucid_g1_deploy_bundle",
+  "created": "2026-09-09T16:55:21.021157+00:00",
+  "source_campaign": "curriculum_comparison_ne1024_20260908_122452 (seed 8600, 8000 iters, 3 motions)",
+  "sonic_commit": "ca8f163ab3849506a60aec89851edddd243bef1f",
+  "lucid_commit": "1d93ffd3af1ef1fc374967bb8dfb45d61022e4b0",
+  "policies": {
+    "deploy_dr_s8600_g1.onnx": {
+      "sha256": "c10804f310fb4f93e8c3ce055e407e18624c9d67ee90122f552846b1cec7813a",
+      "bytes": 58086741
+    },
+    "no_dr_s8600_g1.onnx": {
+      "sha256": "580bcb8755f25b9a12e3ea7e3eb8d1cbfe7f5a70c5468d85e21d4ce2882cb65a",
+      "bytes": 58086741
+    }
+  },
+  "config_sha256": {
+    "deploy_metadata.json": "54a3aed6929c86b9028e61a1c367bfd144628bca73d0788f72d5c5558ed15e17",
+    "observation_config_lucid_g1_1570.yaml": "03ef63703257c83d81b690a8f931710e1f9195a704e87c5a864430de0ea62dc8"
+  },
+  "motions": {
+    "crouch_idle_004__A246": 406,
+    "walk_arc_cw_stop_001__A047": 432,
+    "walk_ff_stop_270_R_very_slow_001__A445_M": 457
+  },
+  "verified": [
+    "the C++ runner builds from runner/ and loads this bundle",
+    "the runner's printed observation layout matches the expected 1570-term order",
+    "golden parity traces reproduce from the shipped ONNX with max |delta| 0.0",
+    "motion CSVs parse under the runner's own ReadMetadata/ReadCSV/ReadCSV3D rules",
+    "the runner drives a MuJoCo G1 over DDS through init -> fixed stand -> policy -> emergency stop (drill.sh)",
+    "the DDS simulator publishes rt/lowstate and holds the standing pose with no controller (test.sh 7/7)",
+    "the TensorRT 10.13 engine reproduces the shipped ONNX to mean 1.45e-06 on the runner's own observations (499 ticks, FP32)",
+    "the runner builds against and links libnvinfer.so.10.13.3"
+  ],
+  "not_verified": [
+    "anything about behaviour on real hardware -- nothing here has been on a robot",
+    "that the fixed stand holds a real G1 unsupported; in simulation it does not"
+  ],
+  "updated": "2026-09-09",
+  "tensorrt": {
+    "required_x86_64": "10.13",
+    "required_jetson_orin": "10.7",
+    "apt_pin": "10.13.3.9-1+cuda12.9",
+    "why": "docs/source/getting_started/installation_deploy.md marks any other version as producing incorrect inference and dangerous robot behavior",
+    "closure_note": "libnvinfer-safe-headers-dev is excluded: it exists only at >=10.16 and nothing under runner/src includes NvInferSafe*",
+    "installed": "10.13.3"
+  },
+  "deployment_rehearsal": {
+    "entrypoint": "drill.sh",
+    "robot_stand_in": "sim/run_robot_sim.py -- MuJoCo on the DDS bus, rt/lowstate + rt/lowcmd, unmodified runner",
+    "sequence": [
+      "INIT (3 s ramp to default_angles)",
+      "WAIT_FOR_CONTROL (the fixed stand)",
+      "CONTROL (']')",
+      "stop ('O') = kp 0, kd 8, terminal"
+    ],
+    "unitree_sdk2py": "sdk/unitree_sdk2py (vendored verbatim)",
+    "cyclonedds": "0.10.2, built against the copy vendored in runner/thirdparty/unitree_sdk2",
+    "sim_python": "3.10-3.12 in .venv-sim (cyclonedds 0.10.2 does not import on 3.13)"
+  },
+  "value_level_parity": {
+    "status": "RUN, passes",
+    "tool": "tools/check_runtime_parity.py",
+    "ticks": 499,
+    "precision_requested": "FP32",
+    "tensorrt": "10.13.3",
+    "mean_abs_delta": 1.448e-06,
+    "median_per_tick_max": 1.788e-06,
+    "p99_per_tick_max": 4.291e-06,
+    "max_abs_delta": 0.002373,
+    "outlier": "1 tick of 499; all 29 joints together, neighbours clean at ~2e-06, offset equals one control tick of joint motion -- the runner dumps obs_buffer_ after Infer() has already consumed it, so the log can catch one input update later than the inference did. Log artefact.",
+    "comparison_at_10_16": {
+      "mean_abs_delta": 0.0001102,
+      "max_abs_delta": 0.005951,
+      "note": "systematic across every tick; 76x worse mean. The version pin is visible in the numbers."
+    }
+  },
+  "measured_stand": {
+    "fixed_stand_holds_unsupported": false,
+    "runaway_joint": "ankle_pitch",
+    "ankle_pitch_kp_nm_per_rad": 28.5,
+    "time_to_sit_s": 1.4,
+    "note": "simulation only; the vendor sim config ships ENABLE_ELASTIC_BAND: True"
+  }
+}

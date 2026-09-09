@@ -1,0 +1,68 @@
+# LUCID fused-g1 observation config -- 1570 floats, no encoder.
+# ============================================================
+# For model_step_008000_g1.onnx exported by
+#   eval_with_delay.py -- ... +export_onnx_only=true +use_encoder=g1
+# whose signature is input obs_dict [1, 1570] -> output action [1, 29].
+#
+# ORDER IS LOAD-BEARING. The runner assigns each term an offset by walking this
+# list top to bottom, so reordering these entries does not fail -- it silently
+# feeds the policy shuffled input. The order below is the exporter's own
+# concatenation order: the three reference (tokenizer) terms first, then the
+# five proprioception histories with GRAVITY LAST. Note that the training YAML
+# lists gravity_dir FIRST in its policy group; the concatenation follows the
+# PolicyCfg attribute order, not the YAML order. Do not "fix" this to match the
+# training YAML.
+#
+# Traced to tools/mujoco_player.py:build_obs -- the reference implementation
+# that reproduces the historical Isaac receipts in MuJoCo -- and cross-checked
+# term-by-term against the runner's registry with
+#   scripts/practice_utility/validate_deploy_obs_config.py \
+#     <this file> --expect-dim 1570 --expect-layout fused_g1_1570
+#
+# NOT a substitute for a value-level parity test. Every name and width here is
+# verified; that the runner's C++ gatherers produce the same NUMBERS as the
+# training-side terms is NOT verified, because the runner has never been built
+# or run in this repository. Run tools/onnx_parity_check.py first, and read the
+# limits section of the bundle README before putting this on a robot.
+#
+# NO INLINE COMMENTS ON A `- name:` LINE. The runner does not parse YAML; its
+# ExtractValue (observation_config.hpp:452-470) trims whitespace and quotes and
+# nothing else, so a trailing `# ...` becomes part of the term name and the
+# runner then aborts with "Unknown observation function". Keep every note on
+# its own line, as below. A real YAML parser accepts the inline form happily,
+# which is exactly why this has to be said here.
+#
+# There is deliberately no `encoder:` section. token_state is not enabled, and
+# the runner explicitly ignores an encoder section in that case
+# (observation_config.hpp:332-338).
+
+observations:
+
+  # Reference terms -- what the motion asks for. 640 floats.
+  # Frames k, k+5, ..., k+45 at 50 Hz, clamped at the clip end.
+  # 290 = 29 dof x 10 frames
+  - name: "motion_joint_positions_10frame_step5"
+    enabled: true
+  # 290 = 29 dof x 10 frames
+  - name: "motion_joint_velocities_10frame_step5"
+    enabled: true
+  # 60 = 6D orientation x 10 frames, anchor body only
+  - name: "motion_anchor_orientation_10frame_step5"
+    enabled: true
+
+  # Proprioception -- what the robot feels. 930 floats, oldest sample first.
+  # 30 = 3 x 10
+  - name: "his_base_angular_velocity_10frame_step1"
+    enabled: true
+  # 290 = 29 x 10
+  - name: "his_body_joint_positions_10frame_step1"
+    enabled: true
+  # 290 = 29 x 10
+  - name: "his_body_joint_velocities_10frame_step1"
+    enabled: true
+  # 290 = 29 x 10
+  - name: "his_last_actions_10frame_step1"
+    enabled: true
+  # 30 = 3 x 10. LAST, not first -- see the ordering note above.
+  - name: "his_gravity_dir_10frame_step1"
+    enabled: true

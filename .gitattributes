@@ -1,0 +1,12 @@
+# Deliberately NO Git LFS in this repository.
+#
+# The upstream SONIC tree ships runner/.gitattributes routing *.a, *.so*, *.onnx,
+# *.pkl and *.csv through LFS. That file is removed here on purpose. This bundle
+# exists to be copied onto a machine and run, and an LFS clone on a host without
+# git-lfs installed silently yields pointer files instead of libunitree_sdk2.a,
+# libddsc.so and the two policies -- which surfaces much later as a link error or
+# an ONNX parse failure that says nothing about LFS.
+#
+# Everything is a plain git object. `git clone` is enough. The two 55 MB ONNX
+# files draw a GitHub size warning; that is the intended trade.
+* -filter -diff -merge

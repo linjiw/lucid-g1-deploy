@@ -1,0 +1,25 @@
+# Built by setup.sh / build.sh on each machine. Never committed: they are
+# machine-specific, and a TensorRT engine built elsewhere fails at robot-startup
+# time, which is the worst moment to discover it.
+.venv/
+.venv-sim/
+.build/
+runner/target/
+runner/build/
+policies/*.trt
+policies/.trt_built_with
+
+# Run outputs: sweeps, drill logs, recorded footage.
+results/
+
+__pycache__/
+*.pyc
+.record_*.xml
+
+# A proprietary arm64 .deb from a third party (roboticsservice, maintained by
+# roboticsservice.support@bytedance.com / Hainan Chuangjian Weilai Technology).
+# It carries no license this repository can point to, it is arm64-only and it is
+# not needed for an x86_64 deployment, so it is not redistributed here. It ships
+# with the upstream SONIC repository at gear_sonic_deploy/thirdparty/ -- copy it
+# in from there if you are deploying on the robot's own Orin.
+runner/thirdparty/*.deb

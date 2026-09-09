@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- CycloneDDS over the loopback interface.
+
+     'lo' is not multicast-capable, and CycloneDDS refuses to create a domain on
+     it with the default configuration ("selected interface lo is not
+     multicast-capable: disabling multicast" followed by a domain create error).
+     Discovery therefore has to be told explicitly to use a unicast peer at
+     localhost. On the robot's own network (192.168.123.x, a real NIC) multicast
+     works and none of this is needed -- do NOT set CYCLONEDDS_URI there. -->
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain id="any">
+    <General>
+      <Interfaces><NetworkInterface address="127.0.0.1"/></Interfaces>
+      <AllowMulticast>false</AllowMulticast>
+    </General>
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <Peers><Peer address="127.0.0.1"/></Peers>
+    </Discovery>
+  </Domain>
+</CycloneDDS>

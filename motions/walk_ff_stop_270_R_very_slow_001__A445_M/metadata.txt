@@ -1,0 +1,25 @@
+Metadata for: walk_ff_stop_270_R_very_slow_001__A445_M
+======================================================
+
+Body part indexes:
+[ 0  4 10 18  5 11 19  9 16 22 28 17 23 29]
+
+Total timesteps: 457
+
+Body part names, in the same order (index 0 is the anchor):
+['pelvis', 'left_hip_roll_link', 'left_knee_link', 'left_ankle_roll_link', 'right_hip_roll_link', 'right_knee_link', 'right_ankle_roll_link', 'torso_link', 'left_shoulder_roll_link', 'left_elbow_link', 'left_wrist_yaw_link', 'right_shoulder_roll_link', 'right_elbow_link', 'right_wrist_yaw_link']
+
+MuJoCo body ids resolved by name against g1_29dof.xml:
+[1, 3, 5, 7, 9, 11, 13, 16, 18, 20, 23, 25, 27, 30]
+
+Data arrays summary:
+  joint_pos: (457, 29)
+  joint_vel: (457, 29)
+  body_pos_w: (457, 14, 3)
+  body_quat_w: (457, 14, 4) WXYZ, w first
+  body_lin_vel_w: (457, 14, 3)
+  body_ang_vel_w: (457, 14, 3)
+
+Source clip fps: 30; resampled to 50 Hz.
+Body arrays are FORWARD KINEMATICS of the source joint angles on this
+model, not recorded data. Velocities are one-frame finite differences.
