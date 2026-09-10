@@ -1,6 +1,6 @@
 {
   "kind": "lucid_deploy_motion_csv",
-  "clip": "/home/linjiw/lucid-sonic/pools/subsets/m3_long8s_a/robot_filtered/walk_ff_stop_270_R_very_slow_001__A445_M.pkl",
+  "clip": "clips/walk_ff_stop_270_R_very_slow_001__A445_M.pkl",
   "name": "walk_ff_stop_270_R_very_slow_001__A445_M",
   "frames": 457,
   "duration_s": 9.14,
@@ -54,7 +54,7 @@
     23,
     29
   ],
-  "model": "/home/linjiw/lucid/GR00T-WholeBodyControl/gear_sonic_deploy/g1/g1_29dof.xml",
+  "model": "/home/robotixx/lucid-g1-deploy/runner/g1/g1_29dof.xml",
   "quaternion_convention": "wxyz",
   "quaternion_convention_source": "motion_data_reader.hpp:272 declares [timestep][body_id][wxyz]; math_utils.hpp:411 reads w = quat[0]",
   "not_verified": [

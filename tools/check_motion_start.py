@@ -70,7 +70,30 @@ def default_angles() -> list[float]:
     return vals
 
 
-def first_frame(motion_dir: Path) -> list[float] | None:
+def isaaclab_to_mujoco() -> list[int]:
+    """The runner's own IsaacLab->MuJoCo gather, read from its header.
+
+    joint_pos.csv is ISAACLAB-ordered -- that is the contract the runner reads it
+    under (motion_data_reader.hpp ReadCSV permutes nothing, and
+    GatherMotionJointPositionsMultiFrame copies the row straight into the
+    observation). `default_angles`, NAMES and LEG_WAIST below are all MUJOCO
+    order, so the CSV row has to be gathered into MuJoCo order before the two can
+    be subtracted. Parsed rather than copied, for the same reason default_angles
+    is: a table that drifts from the runner's is worse than no table.
+    """
+    src = (BUNDLE / "runner/src/g1/g1_deploy_onnx_ref/include/policy_parameters.hpp")
+    block = re.search(
+        r"const std::array<int, 29> isaaclab_to_mujoco = \{(.*?)\};",
+        src.read_text(), re.S)
+    if not block:
+        raise SystemExit(f"could not find isaaclab_to_mujoco in {src}")
+    vals = [int(m) for m in re.findall(r"-?\d+", block[1])]
+    if sorted(vals) != list(range(29)):
+        raise SystemExit(f"isaaclab_to_mujoco is not a 29-permutation: {vals}")
+    return vals
+
+
+def first_frame(motion_dir: Path, i2m: list[int]) -> list[float] | None:
     f = motion_dir / "joint_pos.csv"
     if not f.is_file():
         return None
@@ -82,7 +105,8 @@ def first_frame(motion_dir: Path) -> list[float] | None:
             except ValueError:
                 continue  # header
             if len(vals) >= 29:
-                return vals[:29]
+                # IsaacLab on disk -> MuJoCo, to match default_angles/NAMES.
+                return [vals[k] for k in i2m]
     return None
 
 
@@ -98,6 +122,7 @@ def main() -> int:
     args = ap.parse_args()
 
     da = default_angles()
+    i2m = isaaclab_to_mujoco()
     dirs = sorted(d for d in args.motions.iterdir() if d.is_dir())
     if args.motion:
         dirs = [d for d in dirs if d.name == args.motion]
@@ -106,7 +131,7 @@ def main() -> int:
 
     bad = 0
     for d in dirs:
-        f0 = first_frame(d)
+        f0 = first_frame(d, i2m)
         if f0 is None:
             print(f"  {d.name:<44} no joint_pos.csv -- skipped")
             continue

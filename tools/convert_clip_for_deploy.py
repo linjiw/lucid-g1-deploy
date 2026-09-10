@@ -205,11 +205,26 @@ def convert(clip_path: Path, out_dir: Path, xml: Path) -> dict:
             for row in flat:
                 fh.write(",".join(f"{v:.6f}" for v in row) + "\n")
 
+    # These two columns are read back as ISAACLAB-ordered. motion_data_reader.hpp
+    # ReadCSV is a bare stod/push_back, and GatherMotionJointPositionsMultiFrame
+    # (g1_deploy_onnx_ref.cpp) std::copy's the row straight into the observation
+    # for the full-29 terms -- the runner permutes nothing. Its own lowerbody and
+    # wrist variants index the same array with IsaacLab indices, and the vendored
+    # upstream converter (runner/reference/convert_motions.py) writes the
+    # IsaacLab joint_pos array verbatim, so IsaacLab is the CSV contract.
+    # ``clip.dof50``/``vel50`` are MuJoCo order (mujoco_player.Clip), so they are
+    # permuted here -- the same convention isaac_body_indexes() already applies
+    # to metadata.txt. Writing them unpermuted shuffles 580 of the 1570
+    # observation floats, which nothing in test.sh can see.
     write_csv(
-        "joint_pos.csv", clip.dof50, [f"joint_{i}" for i in range(clip.dof50.shape[1])]
+        "joint_pos.csv",
+        clip.dof50[:, MP.ISAAC_TO_MJ],
+        [f"joint_{i}" for i in range(clip.dof50.shape[1])],
     )
     write_csv(
-        "joint_vel.csv", clip.vel50, [f"joint_{i}" for i in range(clip.vel50.shape[1])]
+        "joint_vel.csv",
+        clip.vel50[:, MP.ISAAC_TO_MJ],
+        [f"joint_{i}" for i in range(clip.vel50.shape[1])],
     )
     axes3 = [f"{b}_{c}" for b in BODY_NAMES for c in ("x", "y", "z")]
     axes4 = [f"{b}_{c}" for b in BODY_NAMES for c in ("qw", "qx", "qy", "qz")]
