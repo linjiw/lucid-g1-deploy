@@ -23,7 +23,41 @@
   },
   "joint_order": {
     "policy_space": "IsaacLab",
+    "motion_csv_space": "IsaacLab",
+    "naming_warning": "The name 'isaaclab_to_mujoco' refers to OPPOSITE arrays in the two codebases this bundle draws from: policy_parameters.hpp indexes it by MuJoCo slot, while tools/mujoco_player.py's ISAAC_TO_MJ is indexed by IsaacLab slot. Both tables are published below with explicit gather semantics so the direction never has to be inferred from the name. They are exact inverses.",
     "isaaclab_to_mujoco": [
+      0,
+      3,
+      6,
+      9,
+      13,
+      17,
+      1,
+      4,
+      7,
+      10,
+      14,
+      18,
+      2,
+      5,
+      8,
+      11,
+      15,
+      19,
+      21,
+      23,
+      25,
+      27,
+      12,
+      16,
+      20,
+      22,
+      24,
+      26,
+      28
+    ],
+    "isaaclab_to_mujoco_usage": "MuJoCo-indexed. mujoco[j] = isaaclab[isaaclab_to_mujoco[j]]. Use this to turn a policy-space (IsaacLab) vector into hardware/MuJoCo joint order.",
+    "mujoco_to_isaaclab": [
       0,
       6,
       12,
@@ -54,7 +88,9 @@
       21,
       28
     ],
-    "verified": "byte-identical to policy_parameters.hpp isaaclab_to_mujoco and g1.py G1_ISAACLAB_TO_MUJOCO_DOF (checked this session)"
+    "mujoco_to_isaaclab_usage": "IsaacLab-indexed. isaaclab[i] = mujoco[mujoco_to_isaaclab[i]]. Use this to turn a hardware/MuJoCo vector into policy space. Every '*_isaac_order' array in this file, and every motion CSV column, is in this order.",
+    "motion_csv_note": "motions/*/joint_pos.csv and joint_vel.csv columns are IsaacLab-ordered. The runner does not permute them: motion_data_reader.hpp ReadCSV is a bare parse, and GatherMotionJointPositionsMultiFrame copies the row straight into the observation for the full-29 terms. tools/convert_clip_for_deploy.py applies mujoco_to_isaaclab when writing them, because mujoco_player.Clip.dof50/vel50 are MuJoCo-ordered.",
+    "verified": "Both arrays are byte-identical to the same-named tables in policy_parameters.hpp and are exact inverses of each other. Cross-checked independently: default_joint_pos_isaac_order below equals policy_parameters.hpp default_angles (MuJoCo order) gathered by mujoco_to_isaaclab. Corrected 2026-09-10: this block previously published the mujoco_to_isaaclab array under the key 'isaaclab_to_mujoco' and claimed byte-identity with the hpp table of that name; the values were the correct inverse pair, the label was swapped."
   },
   "action": {
     "space": "joint position residual added to the default pose",
@@ -222,7 +258,7 @@
   "observation": {
     "total": 1570,
     "config": "config/observation_config_lucid_g1_1570.yaml",
-    "validate_with": "python scripts/practice_utility/validate_deploy_obs_config.py <config> --expect-dim 1570 --expect-layout fused_g1_1570"
+    "validate_with": "python3 tools/validate_deploy_obs_config.py config/observation_config_lucid_g1_1570.yaml --expect-dim 1570 --expect-layout fused_g1_1570 --runner-src runner/src/g1/g1_deploy_onnx_ref/src/g1_deploy_onnx_ref.cpp"
   },
   "reset_convention": "root pose and joint state from clip frame 0; root linear velocity from a one-frame finite difference at 50 Hz; root angular velocity from the body-frame quaternion delta; joint velocities from the clip. Reset WITH reference velocities, not at rest."
 }
