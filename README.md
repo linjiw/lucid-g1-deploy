@@ -14,7 +14,7 @@ of the deployment sequence: init → fixed stand → policy → emergency stop.
 git clone https://github.com/linjiw/lucid-g1-deploy.git
 cd lucid-g1-deploy
 bash setup.sh && source env.sh && bash build.sh && bash test.sh
-bash drill.sh              # rehearse the whole deployment, no robot needed
+bash drill.sh --play       # rehearse the whole deployment, no robot needed
 bash run.sh --policy deploy_dr --sim   # or drive it yourself, one command
 ```
 
@@ -26,7 +26,7 @@ shows what is available.
 setup.sh    install the toolchain on a fresh machine (asks for sudo once)
 env.sh      source in every shell
 build.sh    compile the runner
-test.sh     verify the bundle end to end -- seven checks
+test.sh     verify the bundle end to end -- eight checks
 evaluate.sh reproduce the DR-perturbation and latency measurements in MuJoCo
 drill.sh    rehearse the deployment sequence against a MuJoCo G1 over DDS
 run.sh      launch a policy
@@ -42,24 +42,88 @@ cd ~/lucid-g1-deploy
 bash setup.sh          # in a REAL TERMINAL: sudo needs a tty for the password
 source env.sh          # every new shell
 bash build.sh          # a few minutes the first time
-bash test.sh           # seven checks, all should pass
+bash test.sh           # eight checks: seven pass, one warns (the jump at ']')
 ```
 
-Then rehearse the deployment without a robot. `drill.sh` puts a MuJoCo G1 on the
-DDS bus and drives it with the **unmodified runner binary**, the same arguments
-and the same operator keystrokes you would use on hardware:
+Target: **Ubuntu 22.04, x86_64, NVIDIA GPU.** On a Jetson (arm64) skip
+`setup.sh` and use `runner/scripts/install_deps.sh`, which handles the arm64
+packages; everything else is the same.
+
+If `setup.sh` stops on `apt-get update`, a broken third-party repo elsewhere on
+the machine is failing and `set -e` is doing its job — fix or disable that repo
+and re-run. And if the box already has a **CUDA 13** toolkit, install
+`cuda-nvcc-12-9` as well: without an `nvcc` under `/usr/local/cuda-12.9`,
+`find_package(CUDAToolkit)` falls through to a path in `runner/CMakeLists.txt`
+that hardcodes `/usr/local/cuda`, and you get a binary built against CUDA 13
+under a TensorRT built for 12.9. Confirm afterwards:
 
 ```bash
-bash drill.sh                    # init -> fixed stand -> policy -> emergency stop
-bash drill.sh --viewer           # watch it
-bash drill.sh --parity           # also check the TensorRT engine against the ONNX
+ldd runner/target/release/g1_deploy_onnx_ref | grep cudart   # must say .so.12
 ```
 
-Read **`docs/DEPLOY_SEQUENCE.md`** before you run it. It has the state machine,
-the operator keys, what an emergency stop actually does, and why the robot has
-to be supported during bring-up.
+## Deploy in MuJoCo (sim2sim)
 
-Reproduce the measurements on the new machine — no robot needed, ~40 min:
+`sim/` puts a MuJoCo G1 on the DDS bus speaking the robot's own protocol, so the
+**unmodified runner binary** drives it with the same arguments and the same
+operator keys you would use on hardware. What is substituted is the physics, not
+the software. Two ways in.
+
+**Scripted — `drill.sh`.** Walks the whole sequence and reports what the robot
+did:
+
+```bash
+bash drill.sh                     # init -> fixed stand -> arm -> stop  (~45 s)
+bash drill.sh --play              # ...and press 'T', so the clip actually plays
+bash drill.sh --play --parity     # ...and check the TensorRT engine vs the ONNX
+bash drill.sh --viewer            # show the MuJoCo window (needs a desktop session)
+bash drill.sh --motion <name>     # another clip; `bash run.sh --list` shows them
+bash drill.sh --hold 12           # longer in CONTROL before the stop
+```
+
+A healthy `--play` run reaches every marker and ends with the robot on the
+floor, which is what an emergency stop *is*:
+
+```
+reached   Dimension match: Configuration is valid!
+reached   Init Done
+reached   transitioning to CONTROL state
+reached   Playing motion 0 from frame 0 to end (432 total frames)
+reached   Motion index: 0 : walk_arc_cw_stop_001__A047 completed.
+reached   Stopping G1Deploy...
+
+phase                  window         pelvis z   moved    kp[0]  kd[0]
+FIXED STAND     24.6- 30.1s   0.759 ->  0.771    0.06     99.1    6.3
+POLICY          30.6- 43.2s   0.766 ->  0.282    0.33     99.1    6.3
+AFTER STOP      43.7- 49.7s   0.064 ->  0.069    0.04      0.0    8.0
+```
+
+**Interactive — `run.sh --sim`.** Starts the same MuJoCo robot and hands you the
+keyboard, which is the closer rehearsal of a real run:
+
+```bash
+bash run.sh --policy deploy_dr --iface lo --sim
+```
+
+Wait for `Init Done`, then `]` to arm, `T` to play, `O` to stop. `run.sh` prints
+the whole key list at startup. `--sim` also defaults `--iface` to `lo`, adds
+`--disable-crc-check`, and stops the simulator when the runner exits; pass
+`--no-auto-sim` if you are already running `sim/run_robot_sim.py` yourself.
+
+**Value-level parity** — the TensorRT engine against the shipped ONNX, on the
+runner's own observations. This is the check that a version-mismatched TensorRT
+would fail:
+
+```bash
+bash drill.sh --play --parity
+```
+
+```
+compared 499 ticks
+max |delta|   5.722e-06      mean |delta|  4.204e-07
+PASS -- the TensorRT engine reproduces the ONNX policy to 5.7e-06
+```
+
+**Policy comparison**, no robot needed (~40 min):
 
 ```bash
 bash evaluate.sh                 # both sweeps, 16 seeds
@@ -70,21 +134,71 @@ Compare `results/*/summary.md` against `docs/RESULTS.md`. Small differences
 across machines are expected (MuJoCo and onnxruntime versions differ); the
 **ordering** should not change. If it does, the port is wrong, not the policies.
 
-Then bench it on loopback before anything else:
+## Deploy on a real G1
+
+**Nothing in this bundle has been on a robot.** Every number in it is
+simulation. Read `docs/DEPLOY_SEQUENCE.md` and `docs/DEPLOY_G1.md` section 8
+before you start.
+
+**1. Rehearse first, on the machine you will deploy from.** `bash test.sh` with
+no failures, then `bash drill.sh --play --parity`. If parity does not pass, stop
+— the engine on this machine does not reproduce the policy you validated.
+
+**2. Wire it.** The G1 is on `192.168.123.0/24`, the robot at
+`192.168.123.161`. Give your machine a static address on that subnet and confirm
+DDS traffic before running anything that moves:
 
 ```bash
-bash run.sh --policy deploy_dr --iface lo --sim
+sudo ip addr add 192.168.123.222/24 dev enp3s0
+sudo ip link set enp3s0 up
+ping -c3 192.168.123.161
+sudo tcpdump -i enp3s0 -c 20 udp portrange 7400-7500    # silence here = no DDS
 ```
 
-and on the robot network:
+Full detail, including releasing Unitree's own controller: `docs/ETHERNET_AND_SDK.md`.
+
+**3. Provide the safety this software does not have.** A hardwired emergency
+stop, a fall-arrest harness or gantry, and a fallback controller. The runner's
+stop path is a software boolean plus a 35 rad/s joint-velocity abort and a
+motor-temperature cutoff; none of those is an emergency stop. For a humanoid,
+cutting power is itself a hazard, because the robot falls.
+
+**4. Support the robot from `Init Done` onward.** Two measured reasons, both in
+**Limits** below: the fixed stand does not hold an unsupported G1 in simulation
+(it sits down in about 1.4 s), and all three shipped clips start 0.30–0.41 rad
+RMS away from the pose the runner holds, so the policy is asked to close that
+gap in one control step the moment you press `]`.
+
+**5. Launch.**
 
 ```bash
-bash run.sh --policy deploy_dr            # auto-detects 192.168.123.x
+bash run.sh --policy deploy_dr                  # auto-detects a 192.168.123.x NIC
+bash run.sh --policy deploy_dr --iface enp3s0   # explicit
 ```
 
-Target: **Ubuntu 22.04, x86_64, NVIDIA GPU.** On a Jetson (arm64) skip
-`setup.sh` and use `runner/scripts/install_deps.sh`, which handles the arm64
-packages; everything else is the same.
+`run.sh` refuses to guess if it cannot find a `192.168.123.x` interface, never
+adds `--disable-crc-check` without `--sim`, and asks you to confirm the safety
+checklist from `/dev/tty` — a pipe cannot answer it.
+
+**6. Drive it.** These are the runner's keys, the same ones `drill.sh` sends:
+
+| key | what it does |
+|---|---|
+| `]` | **arm** — WAIT_FOR_CONTROL → CONTROL. The policy runs at 50 Hz, reference parked at frame 0. |
+| `T` | **play** — run the clip from the current frame to its end |
+| `N` / `P` | next / previous motion |
+| `R` | reset the clip to frame 0, paused |
+| `O` | **emergency stop** — kp 0, kd 8, tau 0 |
+
+Lower case works for all of them except `]`.
+
+**7. After a stop, there is no step 8.** `O` is terminal:
+`operator_state.stop` is never cleared and `program_state_` never moves
+backwards, so the process does not return to a stand. Recovery is restarting
+`run.sh`, which re-enters INIT and ramps to `default_angles` from wherever the
+joints ended up — do that with the robot supported, because the ramp assumes the
+feet can take load and after a stop they usually cannot.
+
 
 ## What is in here
 
