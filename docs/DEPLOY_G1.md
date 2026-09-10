@@ -221,11 +221,12 @@ sweeps measure.
 1. `verify_deploy_bundle.py` passes.
 2. `validate_deploy_obs_config.py` passes against the runner you built.
 3. **Value-level parity.** `parity/` holds golden (observation, action) traces
-   from the reference implementation. Run the runner's `--policy-input-logfile`
-   hook on the same clip and compare:
-   `python tools/emit_parity_vectors.py --out parity/deploy_dr --compare <log>`.
-   Dimensional agreement is verified; numerical agreement is **not**, and only
-   this test establishes it. The hook has never been used.
+   from the reference implementation. `bash drill.sh --play --parity` drives the
+   runner against the MuJoCo robot and compares its TensorRT engine against the
+   shipped ONNX on the runner's own observations. This test has been run and it
+   passes — README **Limits** #2 has the figures and explains what the TensorRT
+   version pin has to do with it. Re-run it on the machine you will deploy from:
+   it is the check that a mismatched TensorRT fails.
 4. Bench in `deploy.sh sim` first.
 5. Measure the realised control period and end-to-end latency.
 6. Safety, which does not exist in this software and must be provided

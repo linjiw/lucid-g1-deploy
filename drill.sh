@@ -4,6 +4,7 @@
 #   bash drill.sh                        deploy_dr, headless, ~45 s
 #   bash drill.sh --policy no_dr         the control policy
 #   bash drill.sh --viewer               show the MuJoCo window
+#   bash drill.sh --play                 ALSO play the clip ('T'), not just arm the policy
 #   bash drill.sh --hold 12              stay in CONTROL for 12 s before the stop
 #   bash drill.sh --iface eno1           use a real NIC instead of loopback
 #
@@ -24,7 +25,17 @@
 #                         safety at 50 Hz. THIS IS THE FIXED STAND. The policy
 #                         is not running. You can leave it here indefinitely.
 #   3  CONTROL            ']' sets operator_state.start. The policy runs at
-#                         50 Hz and drives the reference motion.
+#                         50 Hz. NOTE: this arms the policy, it does not start
+#                         the clip -- see 3b.
+#   3b PLAYBACK           'T' sets operator_state.play, and nothing else does:
+#                         the flag is only ever assigned true in
+#                         keyboard_handler.hpp (bound to 'T'), the gamepad
+#                         manager and the ZMQ manager. Until it is set,
+#                         current_frame_ never increments and the 10-frame
+#                         reference stack is ten copies of frame 0 -- the policy
+#                         is running, but tracking a still pose. This drill only
+#                         sends 'T' with --play. The key is the same on hardware;
+#                         docs/DEPLOY_SEQUENCE.md has the full operator table.
 #   4  STOP               'O' sets operator_state.stop. The control loop returns
 #                         at its first line from then on, the threads are joined
 #                         and one damping command is written: kp 0, kd 8, tau 0.
@@ -49,6 +60,7 @@ POLICY=deploy_dr
 IFACE=lo
 HOLD=10
 VIEWER=0
+PLAY=0
 KEEP_FALLEN=1
 BAND=1
 PARITY=0
@@ -63,6 +75,7 @@ while [ $# -gt 0 ]; do case "$1" in
   --iface)  IFACE="$2"; shift 2 ;;
   --hold)   HOLD="$2"; shift 2 ;;
   --viewer) VIEWER=1; shift ;;
+  --play)   PLAY=1; shift ;;
   --reset-on-fall) KEEP_FALLEN=0; shift ;;
   --no-band) BAND=0; shift ;;
   --parity) PARITY=1; shift ;;
@@ -104,6 +117,12 @@ echo "======================================================================"
 echo "  init (wait for the runner) -> stand $STAND_S s -> policy $HOLD s -> stop $STOP_S s"
 echo "  motion        ${MOTION:-all three (runner starts on whichever sorts first)}"
 echo "  elastic band  $( [ "$BAND" -eq 1 ] && echo 'ON through init and stand, released when the policy starts' || echo 'OFF -- the robot will sit down during INIT, see docs' )"
+if [ "$PLAY" -eq 1 ]; then
+  echo "  playback      ON -- 'T' sent 1 s after ']', the clip runs to its end"
+else
+  echo "  playback      OFF -- ']' arms the policy but the reference stays parked at"
+  echo "                frame 0. Pass --play to send 'T' and actually track the clip."
+fi
 echo "  logs  $SIM_LOG"
 echo "        $RUN_LOG"
 echo
@@ -149,6 +168,7 @@ echo "[2] starting the runner (loads motions, then the TensorRT engine)"
 {
   await_log "Init Done" "$BOOT_TIMEOUT" || true
   sleep "$STAND_S"; printf ']'
+  [ "$PLAY" -eq 1 ] && { sleep 1; printf 'T'; }
   sleep "$HOLD";    printf 'O'
   sleep "$STOP_S"
 } | "$RUNNER" "$IFACE" "$ONNX" "$MOTIONS_DIR/" \
@@ -162,7 +182,13 @@ if await_log "Init Done" "$BOOT_TIMEOUT"; then
 else
   echo "[3] TIMED OUT waiting for 'Init Done' after ${BOOT_TIMEOUT}s -- see $RUN_LOG"
 fi
-sleep "$STAND_S"; echo "[4] ']' sent -> CONTROL. Policy driving at 50 Hz."
+sleep "$STAND_S"
+if [ "$PLAY" -eq 1 ]; then
+  echo "[4] ']' sent -> CONTROL. Policy driving at 50 Hz."
+  sleep 1; echo "[4b] 'T' sent -> reference playback started."
+else
+  echo "[4] ']' sent -> CONTROL. Policy at 50 Hz, reference parked at frame 0 (no --play)."
+fi
 sleep "$HOLD";    echo "[5] 'O' sent -> emergency stop. kp 0, kd 8, tau 0."
 sleep "$STOP_S"
 
@@ -190,6 +216,21 @@ for pat in "Dimension match" "Init Done" \
     printf "  MISSING   %s\n" "$pat"
   fi
 done
+
+if [ "$PLAY" -eq 1 ]; then
+  if grep -q "Playing motion" "$RUN_LOG"; then
+    printf "  reached   %s\n" "$(grep -ohE "Playing motion.*" "$RUN_LOG" | head -1 | cut -c1-64)"
+    if grep -qE "completed\.$" "$RUN_LOG"; then
+      printf "  reached   %s\n" "$(grep -ohE "Motion index.*completed\." "$RUN_LOG" | head -1 | cut -c1-64)"
+    else
+      printf "  PARTIAL   clip did not reach its end before the stop -- raise --hold\n"
+    fi
+  else
+    printf "  MISSING   'T' was sent but the runner never reported playback\n"
+  fi
+else
+  printf "  skipped   reference playback ('T') -- not sent without --play\n"
+fi
 
 echo
 echo "======================================================================"

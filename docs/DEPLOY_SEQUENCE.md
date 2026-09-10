@@ -135,7 +135,7 @@ which is how `drill.sh` scripts the whole sequence.
 
 | key | effect |
 |---|---|
-| `]` | start control (WAIT_FOR_CONTROL → CONTROL) |
+| `]` | start control (WAIT_FOR_CONTROL → CONTROL) — **arms the policy only** |
 | `O` | **emergency stop** (uppercase; the manager interface also takes `o`) |
 | `N` | next motion |
 | `T` | play / resume playback |
@@ -144,6 +144,14 @@ which is how `drill.sh` scripts the whole sequence.
 | `Q` / `E` | delta heading ∓ π/12 |
 | `F` | print motor temperatures |
 | Enter | toggle planner mode |
+
+`]` and `T` are two separate steps and both are required to track a motion.
+`]` moves the state machine into CONTROL, so the policy starts running at 50 Hz —
+but `operator_state.play` is still false, `current_frame_` never increments, and
+every one of the ten reference frames in the observation is frame 0. `T` is the
+only key that sets `play`; it is also set by the gamepad and ZMQ interfaces, and
+nowhere else. A policy left armed but unplayed holds a still pose and looks like
+it is failing to track.
 
 In planner mode `W`/`S`/`A`/`D` drive, `1`–`8` pick a locomotion mode, and
 ``R``/`` ` `` is the planner's own emergency stop (momentum reset), which is

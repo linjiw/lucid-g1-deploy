@@ -150,11 +150,21 @@ echo "iface    $IFACE"
     exit 1
   fi
 }
-if [ "$SIM" -eq 1 ]; then
-  echo
-  echo "Keys:  ']' start the policy    'O' emergency stop    Ctrl-C quit"
-  echo "The runner ramps to default_angles, then holds the stand until you press ']'."
-fi
+# Printed in BOTH modes. It used to be simulation-only, which meant a real-robot
+# run -- the one where knowing the keys matters most -- got no key list at all.
+echo
+echo "Keys:"
+echo "  ']'  ARM the policy. It starts running at 50 Hz, but the reference stays"
+echo "       parked at frame 0: this alone does NOT play the clip."
+echo "  'T'  PLAY the clip from the current frame to its end."
+echo "  'N' / 'P'  next / previous motion      'R'  reset clip to frame 0 (paused)"
+echo "  'O'  EMERGENCY STOP -- kp 0, kd 8, tau 0. Terminal: the robot goes down"
+echo "       and the only way back to a stand is restarting this command."
+echo "  Ctrl-C  quit"
+echo "Lower case works for all of them except ']'."
+echo
+echo "Sequence: the runner ramps to default_angles and holds the fixed stand until"
+echo "you press ']'. Support the robot from 'Init Done' until you are done."
 
 # Not exec: the EXIT trap has to run so the simulator is stopped with the runner.
 "$RUNNER" "$IFACE" "$ONNX" "$MOTIONS_DIR/" \
