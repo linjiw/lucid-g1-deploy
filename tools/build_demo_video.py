@@ -166,9 +166,10 @@ def main() -> int:
              "  mass/CoM/friction nominal       lambda 1.0 envelope\n"
              "  actuation latency none          0-60 ms\n"
              "  push              none          +/-1.5 m/s planar, every 1-3 s\n\n"
-             "  MuJoCo falls, 16 seeds, full 8.6 s clip:\n"
+             "  MuJoCo falls, 16 seeds, robot reset ONTO the reference:\n"
              "  training envelope   7/16          0/16\n"
-             "  0-80 ms latency    10/16          0/16",
+             "  0-80 ms latency    10/16          0/16\n"
+             "  Started from a stand instead, both go down in seconds -- see below.",
              kicker="WHAT YOU ARE DEPLOYING"))
 
     add(card(tmp, (n := n + 1), 9.5,
@@ -238,15 +239,33 @@ def main() -> int:
              "Holds default_angles, re-checks safety at 50 Hz. The policy is not "
              "running. Stay here as long as you like. Press ']' to go on."))
 
-    add(clip(tmp, (n := n + 1), args.footage, args.t_policy, 15.0,
-             "3. CONTROL  -  the policy runs",
-             "50 Hz. Observations rebuilt from LowState, TensorRT inference, motor "
-             "commands out. The support strap is released the instant it starts."))
+    add(clip(tmp, (n := n + 1), args.footage, args.t_policy, 6.5,
+             "3. CONTROL  -  the policy takes over",
+             "50 Hz: observations rebuilt from LowState, TensorRT inference, motor "
+             "commands out. The support strap is released the instant it starts -- "
+             "and on this clip the robot goes down within seconds. That is not a "
+             "bug in the rehearsal. The next card explains it."))
 
-    add(clip(tmp, (n := n + 1), args.footage, args.t_stop - 2.0, 7.0,
+    add(card(tmp, (n := n + 1), 12,
+             "Why it goes down, and why the sweep disagrees",
+             "INIT ramps to default_angles and the stand holds there. Pressing ']'\n"
+             "hands the policy frame 0 of the reference -- and every clip shipped\n"
+             "here starts far from that pose:\n\n"
+             "  crouch_idle          0.409 rad RMS   R_hip_pitch  -0.816\n"
+             "  walk_arc_cw          0.299 rad RMS   L_knee       -0.548\n"
+             "  walk_ff_stop_270_R   0.341 rad RMS   R_knee       -0.546\n\n"
+             "The policy must close that in ONE control step, standing, on its\n"
+             "feet. It never sees that in training, where every episode is reset\n"
+             "ONTO the reference. evaluate.sh resets that way too, and reports\n"
+             "0/16 falls. drill.sh starts it the way a robot starts. Believe the\n"
+             "drill.  $ bash test.sh   check 8 measures this for your own clips.",
+             kicker="THE STEP AT ']'", accent=WARN))
+
+    add(clip(tmp, (n := n + 1), args.footage, args.t_stop - 1.5, 6.5,
              "4. 'O'  -  emergency stop",
-             "kp 0, kd 8, tau 0. Zero stiffness. For a standing humanoid that means "
-             "it goes down -- that is what this stop IS.", accent=WARN))
+             "kp 0, kd 8, tau 0. Zero stiffness. Here it lands on a robot that is "
+             "already down; on a standing one it puts it there. That is what this "
+             "stop IS -- it removes the ability to hold a pose.", accent=WARN))
 
     add(card(tmp, (n := n + 1), 11,
              "There is no step 5",
@@ -273,7 +292,8 @@ def main() -> int:
 
     add(card(tmp, (n := n + 1), 10,
              "Reproduce the measurements",
-             "  $ bash evaluate.sh          # ~40 min, no robot, 16 seeds\n\n"
+             "  $ bash evaluate.sh          # ~40 min, no robot, 16 seeds\n"
+             "  $ bash drill.sh             # the deployment, ~90 s\n\n"
              "Two sweeps: all randomization channels scaled together, and\n"
              "actuation latency alone. Draws come from one seeded stream in fixed\n"
              "order, so at a given (lambda, seed) both policies face IDENTICAL\n"
@@ -286,13 +306,14 @@ def main() -> int:
     add(card(tmp, (n := n + 1), 12,
              "Before you go near hardware",
              "  1  These policies CANNOT perceive their own horizontal position.\n"
-             "     No observation term encodes it. Treat any deployment as\n"
-             "     open-loop in the horizontal plane. More DR does not fix it.\n"
-             "  2  The fixed stand does not hold an unsupported G1 in simulation.\n"
+             "     In the run you just watched the robot travelled 0.22 m while\n"
+             "     the reference walked an arc. More DR does not fix it.\n"
+             "  2  The policy jumps at ']'. 0.30-0.41 rad RMS on these clips.\n"
+             "  3  The fixed stand does not hold an unsupported G1 in simulation.\n"
              "     Ankle-pitch stiffness is 28.5 N.m/rad. Support the robot.\n"
-             "  3  A hardwired e-stop, a harness or gantry, and a clear floor are\n"
+             "  4  A hardwired e-stop, a harness or gantry, and a clear floor are\n"
              "     not in this software. Provide them.\n"
-             "  4  NOTHING HERE HAS BEEN ON A ROBOT. Every number is simulation.",
+             "  5  NOTHING HERE HAS BEEN ON A ROBOT. Every number is simulation.",
              kicker="LIMITS", accent=WARN))
 
     add(card(tmp, (n := n + 1), 7.5,

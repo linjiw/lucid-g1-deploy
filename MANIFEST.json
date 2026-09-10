@@ -28,14 +28,19 @@
     "the runner's printed observation layout matches the expected 1570-term order",
     "golden parity traces reproduce from the shipped ONNX with max |delta| 0.0",
     "motion CSVs parse under the runner's own ReadMetadata/ReadCSV/ReadCSV3D rules",
-    "the runner drives a MuJoCo G1 over DDS through init -> fixed stand -> policy -> emergency stop (drill.sh)",
     "the DDS simulator publishes rt/lowstate and holds the standing pose with no controller (test.sh 7/7)",
     "the TensorRT 10.13 engine reproduces the shipped ONNX to mean 1.45e-06 on the runner's own observations (499 ticks, FP32)",
-    "the runner builds against and links libnvinfer.so.10.13.3"
+    "the runner builds against and links libnvinfer.so.10.13.3",
+    "the runner drives a MuJoCo G1 over DDS through init -> fixed stand -> policy -> emergency stop, for BOTH policies (drill.sh)",
+    "losing LowState mid-policy triggers CheckSafety -> damping stop (verified by killing the simulator mid-run)",
+    "a wrong-total observation config aborts before anything moves; a reordered one is caught by test.sh check 2",
+    "the TensorRT engine cache is keyed on the ONNX sha256, so swapping a policy under the same filename forces a rebuild",
+    "run.sh refuses to arm a robot when the safety prompt cannot be answered by a person"
   ],
   "not_verified": [
     "anything about behaviour on real hardware -- nothing here has been on a robot",
-    "that the fixed stand holds a real G1 unsupported; in simulation it does not"
+    "that the fixed stand holds a real G1 unsupported; in simulation it does not",
+    "that a policy survives the step at ']' on hardware; in simulation it does not"
   ],
   "updated": "2026-09-09",
   "tensorrt": {
@@ -57,7 +62,15 @@
     ],
     "unitree_sdk2py": "sdk/unitree_sdk2py (vendored verbatim)",
     "cyclonedds": "0.10.2, built against the copy vendored in runner/thirdparty/unitree_sdk2",
-    "sim_python": "3.10-3.12 in .venv-sim (cyclonedds 0.10.2 does not import on 3.13)"
+    "sim_python": "3.10-3.12 in .venv-sim (cyclonedds 0.10.2 does not import on 3.13)",
+    "default_motion": "walk_arc_cw_stop_001__A047 (the clip the measured results describe)",
+    "measured_run": {
+      "policy": "deploy_dr",
+      "tensorrt": "10.13.3",
+      "fixed_stand": "0.759 -> 0.772 m, held 5.5 s under kp 99 kd 6",
+      "policy_phase": "0.771 -> 0.081 m, travelled 0.22 m horizontally",
+      "after_stop": "0.069 m, kp 0 kd 8"
+    }
   },
   "value_level_parity": {
     "status": "RUN, passes",
@@ -82,5 +95,20 @@
     "ankle_pitch_kp_nm_per_rad": 28.5,
     "time_to_sit_s": 1.4,
     "note": "simulation only; the vendor sim config ships ENABLE_ELASTIC_BAND: True"
+  },
+  "start_pose_step": {
+    "finding": "All three shipped clips begin far from default_angles, the pose the runner holds before ']'. The policy must close that gap in one control step, standing.",
+    "rms_rad": {
+      "crouch_idle_004__A246": 0.409,
+      "walk_arc_cw_stop_001__A047": 0.299,
+      "walk_ff_stop_270_R_very_slow_001__A445_M": 0.341
+    },
+    "worst_joint": {
+      "crouch_idle_004__A246": "R_hip_pitch -0.816",
+      "walk_arc_cw_stop_001__A047": "L_knee -0.548",
+      "walk_ff_stop_270_R_very_slow_001__A445_M": "R_knee -0.546"
+    },
+    "consequence": "evaluate.sh resets the robot ONTO the reference and reports 0/16 falls at lambda 0; drill.sh starts it in the runner's standing pose and it goes down within seconds. The drill is the one that resembles deployment.",
+    "tool": "tools/check_motion_start.py, reported as test.sh check 8 (WARN)"
   }
 }

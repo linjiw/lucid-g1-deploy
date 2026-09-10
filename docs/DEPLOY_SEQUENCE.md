@@ -174,20 +174,69 @@ tau = tau_ff + kp * (q_des - q) + kd * (dq_des - dq),   clipped to the motor lim
 
 so `kp = 0, kd = 8` goes limp here for the same reason it does on the robot.
 
-A run looks like this (measured, `deploy_dr`, TensorRT 10.13, 12 s of policy):
+A run looks like this — measured, `deploy_dr`, TensorRT 10.13, on
+`walk_arc_cw_stop_001__A047`, which is the clip `drill.sh` defaults to and the
+one every number in `docs/RESULTS.md` is about:
 
-| phase | pelvis z | commanded kp[0] / kd[0] |
-|---|---|---|
-| held, no command | 0.793 m | 0 / 0 |
-| INIT ramp | 0.791 → 0.759 | 99.1 / 6.3 |
-| **fixed stand** | 0.759 → 0.777, held 5.6 s | 99.1 / 6.3 |
-| policy | 0.777 → 0.407 | 99.1 / 6.3 |
-| after stop | 0.065 | 0 / 8 |
+| phase | pelvis z | horizontal travel | commanded kp[0] / kd[0] |
+|---|---|---|---|
+| held, no command | 0.793 m | 0.00 m | 0 / 0 |
+| INIT ramp | 0.791 → 0.759 | 0.00 m | 99.1 / 6.3 |
+| **fixed stand** | 0.759 → 0.772, held 5.5 s | 0.06 m | 99.1 / 6.3 |
+| policy | 0.771 → 0.081 | **0.22 m** | 99.1 / 6.3 |
+| after stop | 0.069 | 0.07 m | 0 / 8 |
+
+Two things to read off that table. The policy travelled **0.22 m** while the
+reference walked an arc — that is Limits #1, the missing horizontal-position
+term, visible directly. And it went **down within seconds**, which is the step at
+`]` described below, not a failure of the rehearsal.
+
+Pass `--motion <name>` to rehearse a different shipped clip, or `--all-motions`
+to hand the runner all of them (the runner then starts on whichever sorts
+first — `crouch_idle` — and `N` cycles).
 
 The drill reads the runner's phase transitions off its own log, and detects the
 WAIT_FOR_CONTROL → CONTROL edge from the wire alone: in the pre-policy phases
 the commanded targets are constant at `default_angles`, and when the policy
 takes over they start moving again.
+
+---
+
+## The step at `]`, measured
+
+`INIT` ramps to `default_angles` and `WAIT_FOR_CONTROL` holds there. The instant
+you press `]`, the policy is handed frame 0 of the reference motion. If frame 0
+is far from `default_angles`, the policy has to close that gap in one control
+step — standing, with its weight on its feet.
+
+Measured on the three clips shipped here (`tools/check_motion_start.py`):
+
+| clip | RMS over 29 joints | worst leg joint |
+|---|---|---|
+| `crouch_idle_004__A246` | 0.409 rad | R_hip_pitch −0.816 |
+| `walk_arc_cw_stop_001__A047` | 0.299 rad | L_knee −0.548 |
+| `walk_ff_stop_270_R_very_slow_001__A445_M` | 0.341 rad | R_knee −0.546 |
+
+On the walk clip both knees are bent 0.669 rad by the ramp and the reference
+wants 0.121 — a 0.55 rad step, on both legs, at once.
+
+**This is why `evaluate.sh` and `drill.sh` disagree.** The sweep resets the
+robot *onto* the reference with the reference's velocities, so it never sees the
+step and reports 0/16 falls at λ0. The rehearsal starts the robot in the
+runner's own standing pose, the way a robot actually starts, and the policy goes
+down within seconds. The rehearsal is the one that resembles deployment.
+
+Nothing in the runner closes this gap for you: `InitControl()` only ever ramps
+to `default_angles`. Options, in order of preference:
+
+1. Ship clips that begin near the default stance. The only fix that removes the
+   step instead of managing it.
+2. Put the robot in the clip's starting pose before pressing `]`.
+3. Deploy supported, and expect the first second to be rough.
+
+Do **not** quietly prepend an interpolated lead-in to the clip. The observation
+carries ten future reference frames, so a synthetic lead-in changes what the
+policy sees as well as what it tracks, and it was not trained on it.
 
 ---
 
@@ -242,11 +291,13 @@ a measured fact about hardware. Nothing in this bundle has been on a robot.
 4. Robot network verified: `docs/ETHERNET_AND_SDK.md`.
 5. `bash test.sh` green on the machine you will deploy from.
 6. `bash drill.sh` run at least once, so you have seen the sequence.
-7. TensorRT version confirmed — 10.13 on x86_64, 10.7 on the onboard Orin.
+7. `bash test.sh` check 8 read, and the step at `]` understood for the clip you
+   are about to run.
+8. TensorRT version confirmed — 10.13 on x86_64, 10.7 on the onboard Orin.
    `source env.sh` prints it. This is not a formality: measured on this bundle,
    the engine-vs-ONNX mean disagreement is **1.45e-06 at 10.13** and
    **1.10e-04 at 10.16** — systematically 76× worse at the wrong version. Run
    `bash drill.sh --parity` on the machine you will deploy from.
-8. Read `../README.md` **Limits**. In particular: these policies cannot perceive
+9. Read `../README.md` **Limits**. In particular: these policies cannot perceive
    their own horizontal position, and no value-level parity against the runner
    has ever been run.

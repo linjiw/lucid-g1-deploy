@@ -361,7 +361,12 @@ def main() -> int:
                 got = seen_cmd
                 kp0 = bridge.low_cmd.motor_cmd[0].kp if got else 0.0
                 kd0 = bridge.low_cmd.motor_cmd[0].kd if got else 0.0
-                print(f"  [sim] t={now:6.1f}s  pelvis_z={env.mj_data.qpos[2]:.3f} m  "
+                # x and y matter as much as height. These policies carry no
+                # horizontal-position term in their observation, so the failure
+                # that actually shows up is walking off the reference path while
+                # staying upright -- invisible if you only watch pelvis_z.
+                print(f"  [sim] t={now:6.1f}s  pelvis=({env.mj_data.qpos[0]:+.2f},"
+                      f"{env.mj_data.qpos[1]:+.2f},{env.mj_data.qpos[2]:.3f})m  "
                       f"lowcmd={'yes' if got else 'no '}  "
                       f"kp[0]={kp0:6.1f} kd[0]={kd0:5.1f}", flush=True)
 

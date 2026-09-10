@@ -36,10 +36,19 @@ from pathlib import Path
 import subprocess
 import sys
 
-PY = "/home/linjiw/isaaclab-install/env_isaaclab/bin/python"
+# Defaults for running this file directly. evaluate.sh overrides all three, so
+# these only matter to someone poking at tools/ by hand -- which is exactly when
+# an absolute path from another machine is most confusing. Resolve inside the
+# bundle when it is there.
+_B = Path(__file__).resolve().parent.parent
+PY = str(_B / ".venv/bin/python") if (_B / ".venv/bin/python").is_file() \
+    else "/home/linjiw/isaaclab-install/env_isaaclab/bin/python"
 PLAYER = Path(__file__).resolve().parent / "mujoco_player.py"
-CLIP = "/home/linjiw/lucid-sonic/pools/debug512/robot_filtered/walk_hands_on_back_loop_002__A066_M.pkl"
-A = Path("/home/linjiw/lucid-sonic/artifacts/curriculum_comparison")
+_bundled = sorted((_B / "clips").glob("*.pkl"))
+CLIP = str(_bundled[0]) if _bundled else \
+    "/home/linjiw/lucid-sonic/pools/debug512/robot_filtered/walk_hands_on_back_loop_002__A066_M.pkl"
+A = _B / "policies" if (_B / "policies").is_dir() \
+    else Path("/home/linjiw/lucid-sonic/artifacts/curriculum_comparison")
 
 ARMS = {
     "off_s8600": A

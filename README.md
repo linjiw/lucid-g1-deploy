@@ -175,6 +175,17 @@ config; validate it with `tools/validate_deploy_obs_config.py` before building.
    Reproduce with `bash drill.sh --parity`; the reasoning and the ruled-out
    alternatives are in `tools/check_runtime_parity.py`.
 
+3. **The policy jumps at the moment you press `]`.** INIT ramps to
+   `default_angles` and the stand holds there; pressing `]` hands the policy
+   frame 0 of the reference. All three shipped clips start far from that pose —
+   **0.30–0.41 rad RMS**, with both knees 0.55 rad off on the walk clip and hip
+   pitch 0.82 rad off on the crouch. The policy is asked to close that in one
+   control step, from a standing start, on its feet — a step it never sees in
+   training, where every episode is reset *onto* the reference with its
+   velocities. This is why the same clip scores 0/16 falls in `evaluate.sh` and
+   still goes down within seconds in `drill.sh`. `bash test.sh` check 8 measures
+   it; `tools/check_motion_start.py` explains the options.
+
 3. **The fixed stand does not hold a free-standing G1 in simulation.** Holding
    `default_angles` with the runner's own gains, unsupported, the robot sits down
    in about 1.4 s — the ankle-pitch stiffness (28.5 N·m/rad, derived from rotor

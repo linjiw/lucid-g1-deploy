@@ -4,27 +4,28 @@
 #   bash test.sh            run every check that does not need a robot
 #   bash test.sh --quick    skip the MuJoCo rollout (the slow one)
 #
-# Seven checks, in dependency order. Each one is a measurement; none of them is a
+# Eight checks, in dependency order. Each one is a measurement; none of them is a
 # claim about hardware. What they establish, and what they deliberately do not,
 # is spelled out in docs/DEPLOY_G1.md section 9.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 QUICK=0; [ "${1:-}" = "--quick" ] && QUICK=1
 PY="${PYTHON:-python3}"
-pass=0; fail=0; skip=0
+pass=0; fail=0; skip=0; warn=0
 ok()   { echo "  PASS  $*"; pass=$((pass+1)); }
 bad()  { echo "  FAIL  $*"; fail=$((fail+1)); }
 skipm(){ echo "  SKIP  $*"; skip=$((skip+1)); }
+warnm(){ echo "  WARN  $*"; warn=$((warn+1)); }
 hdr()  { echo; echo "== $* =="; }
 
-hdr "1/7  bundle parses under the runner's own reading rules"
+hdr "1/8  bundle parses under the runner's own reading rules"
 if $PY "$HERE/tools/verify_deploy_bundle.py" "$HERE" >/tmp/lucid_t1.log 2>&1; then
   ok "metadata, CSVs, quaternion order, frame counts, parity traces"
 else
   bad "see /tmp/lucid_t1.log"; sed 's/^/        /' /tmp/lucid_t1.log | tail -8
 fi
 
-hdr "2/7  observation config accepted by the runner's parser"
+hdr "2/8  observation config accepted by the runner's parser"
 # Checked against the runner source, not with a YAML library: the runner's
 # ExtractValue trims whitespace and quotes only, so an inline '#' comment
 # becomes part of the term name and aborts startup. A YAML parser hides that.
@@ -38,7 +39,7 @@ else
   bad "see /tmp/lucid_t2.log"; sed 's/^/        /' /tmp/lucid_t2.log | tail -8
 fi
 
-hdr "3/7  ONNX policies load and are deterministic"
+hdr "3/8  ONNX policies load and are deterministic"
 $PY - "$HERE" <<'PY' && ok "signatures and repeatability" || bad "ONNX check"
 import sys, glob, os
 import numpy as np, onnxruntime as ort
@@ -63,7 +64,7 @@ for f in sorted(glob.glob(f"{here}/policies/*.onnx")):
 sys.exit(rc)
 PY
 
-hdr "4/7  golden parity traces match their policies"
+hdr "4/8  golden parity traces match their policies"
 $PY - "$HERE" <<'PY' && ok "recorded actions reproduce from the shipped ONNX" || bad "parity trace check"
 import sys, json, glob, os
 import numpy as np, onnxruntime as ort
@@ -85,7 +86,7 @@ for d in sorted(glob.glob(f"{here}/parity/*/")):
 sys.exit(rc)
 PY
 
-hdr "5/7  MuJoCo rollout with the reference controller"
+hdr "5/8  MuJoCo rollout with the reference controller"
 if [ "$QUICK" -eq 1 ]; then
   skipm "--quick"
 elif ! $PY -c "import mujoco" >/dev/null 2>&1; then
@@ -116,7 +117,7 @@ print(f\"        outcome={r['outcome']} t_end={r['t_end']}s pelvis_z={r['pelvis_
   fi
 fi
 
-hdr "6/7  C++ runner loads the bundle"
+hdr "6/8  C++ runner loads the bundle"
 RUNNER="$HERE/runner/target/release/g1_deploy_onnx_ref"
 if [ ! -x "$RUNNER" ]; then
   skipm "runner not built -- run: bash build.sh"
@@ -140,7 +141,7 @@ else
   fi
 fi
 
-hdr "7/7  DDS robot simulator comes up on the bus"
+hdr "7/8  DDS robot simulator comes up on the bus"
 # The piece that makes a rehearsal possible: a MuJoCo G1 publishing rt/lowstate
 # and subscribing rt/lowcmd, so the unmodified runner talks to it exactly as it
 # would to hardware. This only checks that it starts, holds its standing pose and
@@ -166,9 +167,28 @@ else
   fi
 fi
 
+hdr "8/8  reference motions start near the pose the runner holds"
+# A hazard that only shows up on the way to a robot. INIT ramps to
+# default_angles and WAIT_FOR_CONTROL holds there; pressing ']' hands the policy
+# frame 0 of the motion. If frame 0 is far from default_angles the policy has to
+# close that gap in one control step, from a standing start, on its feet --
+# a step it never sees in training, where every episode is reset ONTO the
+# reference. This is why a clip can score 0/16 falls in evaluate.sh and still go
+# down within seconds in drill.sh. Reported, not failed: it is a property of the
+# clips shipped here, not a fault in the bundle.
+if [ ! -f "$HERE/tools/check_motion_start.py" ]; then
+  skipm "tools/check_motion_start.py not in this bundle"
+elif $PY "$HERE/tools/check_motion_start.py" --quiet >/tmp/lucid_t8.log 2>&1; then
+  ok "every shipped motion begins close to default_angles"
+else
+  warnm "some motions start far from default_angles -- the policy jumps at ']'"
+  sed 's/^/        /' /tmp/lucid_t8.log | grep -E "JUMP|motions start far" | head -5
+  echo "        full detail: python3 tools/check_motion_start.py"
+fi
+
 echo
 echo "======================================================================"
-echo "  pass $pass   fail $fail   skip $skip"
+echo "  pass $pass   fail $fail   warn $warn   skip $skip"
 echo "======================================================================"
 if [ "$fail" -eq 0 ]; then
 cat <<'EOF'
@@ -178,6 +198,9 @@ Everything checked here passed. Note what is still NOT established:
   * anything at all about behaviour on a robot. No hardware result exists.
   * that the fixed stand holds an unsupported G1. In simulation it does not --
     see docs/DEPLOY_SEQUENCE.md.
+  * that a policy survives the step from default_angles onto its reference at
+    the moment you press ']'. Check 8 measures that step; on the clips shipped
+    here it is large, and in the rehearsal the policy goes down within seconds.
 
 Value-level parity IS established, but not by this script: run
 `bash drill.sh --parity`, which drives the runner against the MuJoCo robot and

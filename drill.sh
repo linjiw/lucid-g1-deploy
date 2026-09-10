@@ -53,6 +53,11 @@ KEEP_FALLEN=1
 BAND=1
 PARITY=0
 RECORD=""
+# Default to the clip every measured number in this bundle is about. The runner
+# starts on motion index 0 = whatever sorts first, which is crouch_idle, so
+# without this the drill silently rehearses a different motion than
+# docs/RESULTS.md describes.
+MOTION=walk_arc_cw_stop_001__A047
 while [ $# -gt 0 ]; do case "$1" in
   --policy) POLICY="$2"; shift 2 ;;
   --iface)  IFACE="$2"; shift 2 ;;
@@ -62,6 +67,8 @@ while [ $# -gt 0 ]; do case "$1" in
   --no-band) BAND=0; shift ;;
   --parity) PARITY=1; shift ;;
   --record) RECORD="$2"; shift 2 ;;
+  --motion) MOTION="$2"; shift 2 ;;
+  --all-motions) MOTION=""; shift ;;
   --help|-h) sed -n '2,50p' "$0"; exit 0 ;;
   *) echo "unknown option: $1"; exit 2 ;;
 esac; done
@@ -71,6 +78,16 @@ RUNNER="$HERE/runner/target/release/g1_deploy_onnx_ref"
 SIMPY="$HERE/.venv-sim/bin/python"
 LOGS="$HERE/results/drill"
 mkdir -p "$LOGS"
+
+MOTIONS_DIR="$HERE/motions"
+if [ -n "$MOTION" ]; then
+  [ -d "$HERE/motions/$MOTION" ] || {
+    echo "no such motion: $MOTION"; echo "available:"
+    for m in "$HERE"/motions/*/; do echo "  $(basename "$m")"; done; exit 1; }
+  MOTIONS_DIR=$(mktemp -d)
+  ln -s "$HERE/motions/$MOTION" "$MOTIONS_DIR/"
+  trap 'rm -rf "$MOTIONS_DIR"' EXIT
+fi
 
 for f in "$ONNX" "$RUNNER" "$SIMPY"; do
   [ -e "$f" ] || { echo "missing: $f"; echo "run setup.sh and build.sh first"; exit 1; }
@@ -85,6 +102,7 @@ echo "======================================================================"
 echo "  DEPLOYMENT DRILL -- $POLICY on a MuJoCo G1, over DDS on '$IFACE'"
 echo "======================================================================"
 echo "  init (wait for the runner) -> stand $STAND_S s -> policy $HOLD s -> stop $STOP_S s"
+echo "  motion        ${MOTION:-all three (runner starts on whichever sorts first)}"
 echo "  elastic band  $( [ "$BAND" -eq 1 ] && echo 'ON through init and stand, released when the policy starts' || echo 'OFF -- the robot will sit down during INIT, see docs' )"
 echo "  logs  $SIM_LOG"
 echo "        $RUN_LOG"
@@ -133,7 +151,7 @@ echo "[2] starting the runner (loads motions, then the TensorRT engine)"
   sleep "$STAND_S"; printf ']'
   sleep "$HOLD";    printf 'O'
   sleep "$STOP_S"
-} | "$RUNNER" "$IFACE" "$ONNX" "$HERE/motions/" \
+} | "$RUNNER" "$IFACE" "$ONNX" "$MOTIONS_DIR/" \
       --obs-config "$HERE/config/observation_config_lucid_g1_1570.yaml" \
       --disable-crc-check "${parity_args[@]}" 2>&1 \
     | "$SIMPY" -u "$HERE/tools/stamp.py" >"$RUN_LOG" &
@@ -151,7 +169,10 @@ sleep "$STOP_S"
 wait $RUN_PID 2>/dev/null
 kill $SIM_PID 2>/dev/null
 wait $SIM_PID 2>/dev/null
-pkill -f "sim/run_robot_sim.py" 2>/dev/null
+# A `pkill -f "sim/run_robot_sim.py"` was here and is a foot-gun: -f matches whole
+# command lines, so it kills any shell whose command line merely MENTIONS the
+# script -- including the one running this drill, which then exits 144 and
+# leaves the simulator behind. The kill above already targets the right PID.
 sleep 1
 
 echo
@@ -187,10 +208,11 @@ rows, sim_epoch = [], None
 for line in open(sim_log):
     if (m := re.search(r"EVENT epoch ([\d.]+)", line)):
         sim_epoch = float(m[1]); continue
-    m = re.search(r"t=\s*([\d.]+)s\s+pelvis_z=([\d.]+) m\s+lowcmd=(\w+)\s+"
-                  r"kp\[0\]=\s*([\d.]+) kd\[0\]=\s*([\d.]+)", line)
+    m = re.search(r"t=\s*([\d.]+)s\s+pelvis=\(([-+\d.]+),([-+\d.]+),([\d.]+)\)m\s+"
+                  r"lowcmd=(\w+)\s+kp\[0\]=\s*([\d.]+) kd\[0\]=\s*([\d.]+)", line)
     if m:
-        rows.append((float(m[1]), float(m[2]), m[3] == "yes", float(m[4]), float(m[5])))
+        rows.append((float(m[1]), float(m[4]), m[5] == "yes", float(m[6]), float(m[7]),
+                     float(m[2]), float(m[3])))
 
 if not rows or sim_epoch is None:
     print("  no usable simulator status -- see the sim log"); raise SystemExit(1)
@@ -223,7 +245,8 @@ if t_control:
 if t_stop:
     edges.append(("AFTER STOP", t_stop, 1e9))
 
-print(f"  {'phase':<15}{'window':>14}  {'pelvis z':>15}  {'kp[0]':>7} {'kd[0]':>6}")
+print(f"  {'phase':<15}{'window':>14}  {'pelvis z':>15}  {'moved':>6}  "
+      f"{'kp[0]':>7} {'kd[0]':>6}")
 for name, a, b in edges:
     seg = [r for r in rows if a <= r[0] < b]
     if not seg:
@@ -231,8 +254,10 @@ for name, a, b in edges:
         continue
     # Gains are reported from the FIRST sample in the window: the last sample of
     # the policy window can already carry the damping command that ends it.
+    moved = ((seg[-1][5] - seg[0][5]) ** 2 + (seg[-1][6] - seg[0][6]) ** 2) ** 0.5
     print(f"  {name:<15}{seg[0][0]:5.1f}-{seg[-1][0]:5.1f}s  "
-          f"{seg[0][1]:6.3f} -> {seg[-1][1]:6.3f}  {seg[0][3]:7.1f} {seg[0][4]:6.1f}")
+          f"{seg[0][1]:6.3f} -> {seg[-1][1]:6.3f}  {moved:6.2f}  "
+          f"{seg[0][3]:7.1f} {seg[0][4]:6.1f}")
 
 print()
 stand = [r for r in rows if t_init_done and t_control and t_init_done <= r[0] < t_control]
@@ -240,6 +265,16 @@ if stand:
     zs = [r[1] for r in stand]
     print(f"  fixed stand held {min(zs):.3f}-{max(zs):.3f} m for "
           f"{stand[-1][0] - stand[0][0]:.1f}s under kp={stand[-1][3]:.0f} kd={stand[-1][4]:.0f}")
+pol = [r for r in rows if t_control and t_stop and t_control <= r[0] < t_stop]
+if pol:
+    trav = ((pol[-1][5] - pol[0][5]) ** 2 + (pol[-1][6] - pol[0][6]) ** 2) ** 0.5
+    print(f"  during the policy the robot travelled {trav:.2f} m horizontally, "
+          f"ending at ({pol[-1][5]:+.2f}, {pol[-1][6]:+.2f})")
+    if trav < 0.30:
+        print("  It barely moved. The reference clip does move, so this is the")
+        print("  drift in README Limits #1: the observation carries no horizontal")
+        print("  position term, so the policy cannot tell it is off the path.")
+
 after = [r for r in rows if t_stop and r[0] >= t_stop]
 if after:
     print(f"  after the stop the commanded gains are kp={after[-1][3]:.0f} "
