@@ -227,6 +227,11 @@ sweeps measure.
    passes — README **Limits** #2 has the figures and explains what the TensorRT
    version pin has to do with it. Re-run it on the machine you will deploy from:
    it is the check that a mismatched TensorRT fails.
+
+   Record the baseline **per policy**. `deploy_dr` sits at ~2e-06 mean and
+   `no_dr` at ~6.9e-05 on the same correctly-pinned TensorRT 10.13.3, a 33×
+   spread that is a property of the networks, not of the install. Judge a new
+   export against its own first reading, not against `deploy_dr`'s.
 4. Bench in `deploy.sh sim` first.
 5. Measure the realised control period and end-to-end latency.
 6. Safety, which does not exist in this software and must be provided

@@ -294,6 +294,19 @@ config; validate it with `tools/validate_deploy_obs_config.py` before building.
    Reproduce with `bash drill.sh --parity`; the reasoning and the ruled-out
    alternatives are in `tools/check_runtime_parity.py`.
 
+   **That 1e-06 is a property of this network, not a pass mark for any policy.**
+   Both figures above are `deploy_dr`. Running the same test on `no_dr` — same
+   pinned TensorRT 10.13.3, same GPU, same runner, 3 repeats — gives **mean
+   6.88e-05, median 5.71e-05, max 2.78e-04**, and it is systematic rather than
+   an outlier: **every one of 648 ticks** exceeds 1e-05, where `deploy_dr` has
+   none. That is the same order as the 1.10e-04 above, which is the evidence for
+   the version pin — so the magnitude alone does not distinguish "wrong TensorRT"
+   from "different network". What separates them is the shape: a version mismatch
+   moves a policy off its own baseline, and 2.78e-04 is `no_dr`'s correct
+   baseline. Physically it is 0.15 mrad (0.009°) of joint target and changes
+   nothing. Take a policy's own baseline first and compare against that; do not
+   port `deploy_dr`'s number to a policy you just exported.
+
 3. **The policy jumps at the moment you press `]`.** INIT ramps to
    `default_angles` and the stand holds there; pressing `]` hands the policy
    frame 0 of the reference. All three shipped clips start far from that pose —
