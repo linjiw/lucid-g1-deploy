@@ -144,6 +144,10 @@ def main() -> int:
     ap.add_argument("--record-size", default="1280x720")
     ap.add_argument("--status-hz", type=float, default=1.0,
                     help="how often to print a status line (0 to silence)")
+    ap.add_argument("--latency-ms", type=float, default=0.0,
+                    help="actuation latency in ms, applied to every LowCmd before "
+                         "it becomes torque. Rounded to whole physics steps (5 ms). "
+                         "Adjust live in the viewer with '=' / '-' / '0'.")
     ap.add_argument("--no-hold", action="store_true",
                     help="do NOT hold the robot upright before the first LowCmd; "
                          "let it collapse under zero torque (see --help notes)")
@@ -269,6 +273,18 @@ def main() -> int:
     env = sim.sim_env
     bridge = sim.unitree_bridge
 
+    applied = env.set_actuation_delay_ms(args.latency_ms)
+    if args.latency_ms and abs(applied - args.latency_ms) > 1e-9:
+        print(f"  latency        {applied:.0f} ms  (rounded from {args.latency_ms:.1f} to a "
+              f"whole {wbc['SIMULATE_DT'] * 1000:.0f} ms physics step)")
+    else:
+        print(f"  latency        {applied:.0f} ms actuation delay"
+              f"{'' if applied else '  (none)'}")
+    if not args.headless:
+        print("  viewer keys    '='  +5 ms latency    '-'  -5 ms    '0'  reset to 0")
+        print("                 '7'/'8' band length   '9' band on/off")
+    print()
+
     recorder = None
     if args.record:
         recorder = _Recorder(env, args.record, _rec_w, _rec_h, args.record_hz,
@@ -368,7 +384,9 @@ def main() -> int:
                 print(f"  [sim] t={now:6.1f}s  pelvis=({env.mj_data.qpos[0]:+.2f},"
                       f"{env.mj_data.qpos[1]:+.2f},{env.mj_data.qpos[2]:.3f})m  "
                       f"lowcmd={'yes' if got else 'no '}  "
-                      f"kp[0]={kp0:6.1f} kd[0]={kd0:5.1f}", flush=True)
+                      f"kp[0]={kp0:6.1f} kd[0]={kd0:5.1f}"
+                      f"{f'  lat={env.actuation_delay_ms:.0f}ms' if env.actuation_delay_ms else ''}",
+                      flush=True)
 
             if args.duration and now >= args.duration:
                 print(f"  [sim] --duration {args.duration}s reached", flush=True)

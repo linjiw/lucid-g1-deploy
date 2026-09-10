@@ -5,6 +5,7 @@
 #   bash drill.sh --policy no_dr         the control policy
 #   bash drill.sh --viewer               show the MuJoCo window
 #   bash drill.sh --play                 ALSO play the clip ('T'), not just arm the policy
+#   bash drill.sh --latency 60           inject 60 ms of actuation latency at the robot
 #   bash drill.sh --hold 12              stay in CONTROL for 12 s before the stop
 #   bash drill.sh --iface eno1           use a real NIC instead of loopback
 #
@@ -61,6 +62,7 @@ IFACE=lo
 HOLD=10
 VIEWER=0
 PLAY=0
+LATENCY=0
 KEEP_FALLEN=1
 BAND=1
 PARITY=0
@@ -76,6 +78,7 @@ while [ $# -gt 0 ]; do case "$1" in
   --hold)   HOLD="$2"; shift 2 ;;
   --viewer) VIEWER=1; shift ;;
   --play)   PLAY=1; shift ;;
+  --latency) LATENCY="$2"; shift 2 ;;
   --reset-on-fall) KEEP_FALLEN=0; shift ;;
   --no-band) BAND=0; shift ;;
   --parity) PARITY=1; shift ;;
@@ -123,11 +126,16 @@ else
   echo "  playback      OFF -- ']' arms the policy but the reference stays parked at"
   echo "                frame 0. Pass --play to send 'T' and actually track the clip."
 fi
+if [ "$LATENCY" != "0" ]; then
+  echo "  latency       ${LATENCY} ms actuation delay, injected at the robot"
+else
+  echo "  latency       none (--latency <ms> injects actuation delay)"
+fi
 echo "  logs  $SIM_LOG"
 echo "        $RUN_LOG"
 echo
 
-sim_args=(--iface "$IFACE" --status-hz 2)
+sim_args=(--iface "$IFACE" --status-hz 2 --latency-ms "$LATENCY")
 [ -n "$RECORD" ] && sim_args+=(--record "$RECORD")
 [ "$BAND" -eq 1 ] && sim_args+=(--band)
 [ "$VIEWER" -eq 1 ] || sim_args+=(--headless)

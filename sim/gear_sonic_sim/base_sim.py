@@ -16,6 +16,7 @@ from typing import Dict
 import xml.etree.ElementTree as ET
 
 import mujoco
+import collections
 import mujoco.viewer
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -49,6 +50,15 @@ class DefaultEnv:
         self.num_body_dof = self.robot.NUM_JOINTS
         self.num_hand_dof = self.robot.NUM_HAND_JOINTS
         self.sim_dt = self.config["SIMULATE_DT"]
+        # Actuation latency, injected here rather than in the runner: this is the
+        # robot side of the wire, which is where a real motor bus adds its delay.
+        # The buffer holds one LowCmd snapshot per PHYSICS step and the torque is
+        # computed from the one pushed `actuation_delay_steps` steps ago -- the
+        # same convention tools/mujoco_player.py uses for its `delay` channel, and
+        # SIMULATE_DT is 0.005 s there and here, so the ladders are comparable.
+        self.actuation_delay_steps = 0
+        self.actuation_delay_ms = 0.0
+        self._cmd_delay_buf = collections.deque(maxlen=1)
         self.obs = None
         self.torques = np.zeros(self.num_body_dof + self.num_hand_dof * 2)
         self.torque_limit = np.array(self.robot.MOTOR_EFFORT_LIMIT_LIST)
@@ -206,7 +216,7 @@ class DefaultEnv:
                 self.viewer = mujoco.viewer.launch_passive(
                     self.mj_model,
                     self.mj_data,
-                    key_callback=self.elastic_band.MujuocoKeyCallback,
+                    key_callback=self.viewer_key_callback,
                     show_left_ui=False,
                     show_right_ui=False,
                 )
@@ -216,7 +226,9 @@ class DefaultEnv:
         else:
             if self.onscreen:
                 self.viewer = mujoco.viewer.launch_passive(
-                    self.mj_model, self.mj_data, show_left_ui=False, show_right_ui=False
+                    self.mj_model, self.mj_data,
+                    key_callback=self.viewer_key_callback,
+                    show_left_ui=False, show_right_ui=False,
                 )
             else:
                 mujoco.mj_forward(self.mj_model, self.mj_data)
@@ -263,36 +275,59 @@ class DefaultEnv:
             )
             self.renderers[camera_name] = renderer
 
+    def set_actuation_delay_ms(self, ms: float) -> float:
+        """Set actuation latency, rounded to whole physics steps. Returns the value used."""
+        ms = max(0.0, float(ms))
+        steps = int(round(ms / 1000.0 / self.sim_dt))
+        if steps != self.actuation_delay_steps:
+            # Keep whatever history still fits so a change mid-run does not snap
+            # the robot with a stale or empty command.
+            self._cmd_delay_buf = collections.deque(self._cmd_delay_buf, maxlen=steps + 1)
+        self.actuation_delay_steps = steps
+        self.actuation_delay_ms = steps * self.sim_dt * 1000.0
+        return self.actuation_delay_ms
+
+    def viewer_key_callback(self, key):
+        """Viewer keys. 7/8/9 are the vendor's elastic band; the rest are ours."""
+        import glfw
+
+        step = 5.0
+        if key == glfw.KEY_EQUAL:      # '=' / '+'
+            now = self.set_actuation_delay_ms(self.actuation_delay_ms + step)
+            print(f"  [sim] actuation latency {now:.0f} ms "
+                  f"({self.actuation_delay_steps} physics steps)", flush=True)
+        elif key == glfw.KEY_MINUS:    # '-'
+            now = self.set_actuation_delay_ms(self.actuation_delay_ms - step)
+            print(f"  [sim] actuation latency {now:.0f} ms "
+                  f"({self.actuation_delay_steps} physics steps)", flush=True)
+        elif key == glfw.KEY_0:
+            self.set_actuation_delay_ms(0.0)
+            print("  [sim] actuation latency 0 ms", flush=True)
+        elif self.elastic_band is not None:
+            self.elastic_band.MujuocoKeyCallback(key)
+
     def compute_body_torques(self) -> np.ndarray:
         # PD control: tau = tau_ff + kp * (q_des - q) + kd * (dq_des - dq)
         body_torques = np.zeros(self.num_body_dof)
         if self.unitree_bridge is not None and self.unitree_bridge.low_cmd:
-            for i in range(self.unitree_bridge.num_body_motor):
+            n = self.unitree_bridge.num_body_motor
+            mc = self.unitree_bridge.low_cmd.motor_cmd
+            # One snapshot per physics step. Taking it in one pass also makes the
+            # command atomic against the DDS callback thread, which the previous
+            # field-by-field read was not.
+            self._cmd_delay_buf.append(
+                np.array([(mc[i].tau, mc[i].kp, mc[i].q, mc[i].kd, mc[i].dq) for i in range(n)])
+            )
+            cmd = self._cmd_delay_buf[0]  # oldest; == the one just pushed when maxlen is 1
+            for i in range(n):
+                tau_ff, kp, q_des, kd, dq_des = cmd[i]
                 if self.unitree_bridge.use_sensor:
-                    body_torques[i] = (
-                        self.unitree_bridge.low_cmd.motor_cmd[i].tau
-                        + self.unitree_bridge.low_cmd.motor_cmd[i].kp
-                        * (self.unitree_bridge.low_cmd.motor_cmd[i].q - self.mj_data.sensordata[i])
-                        + self.unitree_bridge.low_cmd.motor_cmd[i].kd
-                        * (
-                            self.unitree_bridge.low_cmd.motor_cmd[i].dq
-                            - self.mj_data.sensordata[i + self.unitree_bridge.num_body_motor]
-                        )
-                    )
+                    q = self.mj_data.sensordata[i]
+                    dq = self.mj_data.sensordata[i + n]
                 else:
-                    body_torques[i] = (
-                        self.unitree_bridge.low_cmd.motor_cmd[i].tau
-                        + self.unitree_bridge.low_cmd.motor_cmd[i].kp
-                        * (
-                            self.unitree_bridge.low_cmd.motor_cmd[i].q
-                            - self.mj_data.qpos[self.body_joint_index[i] + self.qpos_offset - 1]
-                        )
-                        + self.unitree_bridge.low_cmd.motor_cmd[i].kd
-                        * (
-                            self.unitree_bridge.low_cmd.motor_cmd[i].dq
-                            - self.mj_data.qvel[self.body_joint_index[i] + self.qvel_offset - 1]
-                        )
-                    )
+                    q = self.mj_data.qpos[self.body_joint_index[i] + self.qpos_offset - 1]
+                    dq = self.mj_data.qvel[self.body_joint_index[i] + self.qvel_offset - 1]
+                body_torques[i] = tau_ff + kp * (q_des - q) + kd * (dq_des - dq)
         return body_torques
 
     def get_head_pose(self) -> np.ndarray:
