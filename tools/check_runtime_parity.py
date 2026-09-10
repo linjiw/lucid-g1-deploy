@@ -54,6 +54,10 @@ not an inference difference:
 pinned input buffer, so a dump that catches one input-thread update later than
 the inference did produces exactly this. It affects the log, not the robot.
 
+Corroborated: runs that happen to contain no such tick come out at max 5.1e-06
+and 6.2e-06 over 498 ticks -- three orders tighter than the runs that do. A
+numerical property would not come and go between runs of the same engine.
+
 Row alignment is shift -1 (obs.csv is written one tick after the action derived
 from it) and is not in doubt: the neighbouring shifts give 2.0 to 4.7.
 

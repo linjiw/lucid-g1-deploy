@@ -15,7 +15,12 @@ git clone https://github.com/linjiw/lucid-g1-deploy.git
 cd lucid-g1-deploy
 bash setup.sh && source env.sh && bash build.sh && bash test.sh
 bash drill.sh              # rehearse the whole deployment, no robot needed
+bash run.sh --policy deploy_dr --sim   # or drive it yourself, one command
 ```
+
+`drill.sh` defaults to `walk_arc_cw_stop_001__A047`, the clip every measured
+number here is about. `--motion <name>` picks another; `bash run.sh --list`
+shows what is available.
 
 ```
 setup.sh    install the toolchain on a fresh machine (asks for sudo once)
