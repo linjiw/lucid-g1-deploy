@@ -1,0 +1,664 @@
+<!-- Published artifact: https://claude.ai/code/artifact/0775dd15-78a8-4b64-bcaa-f78f4f1f411a
+     Source of record for docs/DEPLOY_DAY.md's lab checklist.
+     Republish THIS path to update that artifact in place. -->
+<title>G1 Deployment Day</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+  :root{
+    --ground:#F4F6F7;
+    --surface:#FFFFFF;
+    --surface-2:#EDF0F2;
+    --ink:#15181C;
+    --ink-2:#3C454E;
+    --muted:#67727D;
+    --line:#D6DCE1;
+    --line-2:#C2CAD1;
+    --accent:#A44C07;
+    --accent-soft:#FBEDE0;
+    --verified:#1F6B43;
+    --verified-soft:#E4F0E9;
+    --hazard:#A81E18;
+    --hazard-soft:#FBE9E7;
+    --shadow:0 1px 2px rgba(21,24,28,.06),0 6px 18px -10px rgba(21,24,28,.22);
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --serif:"Source Serif 4",Georgia,"Times New Roman",serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#111417;
+      --surface:#191D21;
+      --surface-2:#21262B;
+      --ink:#E7EBEE;
+      --ink-2:#BFC8D0;
+      --muted:#8C97A2;
+      --line:#2C333A;
+      --line-2:#3A434B;
+      --accent:#E5913F;
+      --accent-soft:#2E2116;
+      --verified:#5FBE8B;
+      --verified-soft:#14261D;
+      --hazard:#F0847C;
+      --hazard-soft:#2B1715;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 22px -12px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#111417;
+    --surface:#191D21;
+    --surface-2:#21262B;
+    --ink:#E7EBEE;
+    --ink-2:#BFC8D0;
+    --muted:#8C97A2;
+    --line:#2C333A;
+    --line-2:#3A434B;
+    --accent:#E5913F;
+    --accent-soft:#2E2116;
+    --verified:#5FBE8B;
+    --verified-soft:#14261D;
+    --hazard:#F0847C;
+    --hazard-soft:#2B1715;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 22px -12px rgba(0,0,0,.7);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--ground);
+    color:var(--ink);
+    font-family:var(--serif);
+    font-size:16px;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:860px;margin:0 auto;padding-inline:20px;padding-block:0 72px}
+
+  /* ---------- masthead ---------- */
+  header.mast{padding-block:44px 28px;border-bottom:2px solid var(--ink);margin-bottom:0}
+  .kicker{
+    font-family:var(--sans);font-weight:600;font-size:11px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--accent);margin:0 0 14px
+  }
+  h1{
+    font-family:var(--sans);font-weight:700;font-size:clamp(34px,7vw,54px);
+    line-height:1.02;letter-spacing:-.022em;margin:0 0 16px;text-wrap:balance
+  }
+  .standfirst{font-size:18px;line-height:1.5;color:var(--ink-2);margin:0;max-width:60ch}
+
+  .warn{
+    margin-top:26px;border-left:3px solid var(--hazard);background:var(--hazard-soft);
+    padding:14px 18px;border-radius:0 4px 4px 0
+  }
+  .warn strong{font-family:var(--sans);font-weight:700;color:var(--hazard)}
+  .warn p{margin:0;font-size:15px;color:var(--ink-2)}
+
+  /* ---------- legend ---------- */
+  .legend{
+    display:flex;flex-wrap:wrap;gap:10px 22px;padding-block:20px;
+    border-bottom:1px solid var(--line);align-items:center
+  }
+  .legend-item{display:flex;align-items:center;gap:9px;font-size:13.5px;color:var(--muted)}
+
+  .tag{
+    font-family:var(--sans);font-weight:600;font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;padding:3px 8px;border-radius:3px;white-space:nowrap;flex:none
+  }
+  .tag.reh{background:var(--verified-soft);color:var(--verified);border:1px solid color-mix(in srgb,var(--verified) 32%,transparent)}
+  .tag.read{background:transparent;color:var(--muted);border:1px dashed var(--line-2)}
+  .tag.hw{background:var(--accent-soft);color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 32%,transparent)}
+
+  /* ---------- progress ---------- */
+  .progress{
+    position:sticky;top:0;z-index:20;background:var(--ground);
+    border-bottom:1px solid var(--line);padding-block:12px;
+    display:flex;align-items:center;gap:16px;flex-wrap:wrap
+  }
+  .progress-num{font-family:var(--mono);font-weight:700;font-size:14px;font-variant-numeric:tabular-nums;color:var(--ink)}
+  .bar{flex:1 1 160px;height:5px;background:var(--surface-2);border-radius:3px;overflow:hidden;min-width:120px}
+  .bar i{display:block;height:100%;width:0;background:var(--verified);transition:width .25s ease}
+  .reset{
+    font-family:var(--sans);font-size:12px;font-weight:600;letter-spacing:.04em;
+    background:none;border:1px solid var(--line-2);color:var(--muted);
+    padding:5px 12px;border-radius:4px;cursor:pointer
+  }
+  .reset:hover{border-color:var(--accent);color:var(--accent)}
+  .reset:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  /* ---------- phases ---------- */
+  .phase{padding-block:40px 8px}
+  .phase-head{display:flex;gap:18px;align-items:baseline;margin-bottom:6px}
+  .phase-no{
+    font-family:var(--mono);font-weight:700;font-size:13px;color:var(--accent);
+    letter-spacing:.04em;flex:none;padding-top:4px
+  }
+  h2{
+    font-family:var(--sans);font-weight:700;font-size:clamp(22px,3.4vw,28px);
+    letter-spacing:-.015em;margin:0;line-height:1.15;text-wrap:balance
+  }
+  .phase-note{color:var(--muted);font-size:15px;margin:2px 0 0 0;padding-left:50px}
+  @media (max-width:560px){.phase-note{padding-left:0}}
+
+  /* ---------- steps ---------- */
+  .steps{list-style:none;margin:22px 0 0;padding:0;display:flex;flex-direction:column;gap:14px}
+  .step{
+    background:var(--surface);border:1px solid var(--line);border-radius:6px;
+    box-shadow:var(--shadow);overflow:hidden
+  }
+  .step-top{display:flex;gap:14px;padding:16px 18px;align-items:flex-start}
+  .step input[type=checkbox]{
+    appearance:none;flex:none;width:20px;height:20px;margin:2px 0 0;
+    border:1.5px solid var(--line-2);border-radius:4px;background:var(--surface);
+    cursor:pointer;position:relative;transition:background .12s,border-color .12s
+  }
+  .step input[type=checkbox]:checked{background:var(--verified);border-color:var(--verified)}
+  .step input[type=checkbox]:checked::after{
+    content:"";position:absolute;left:6px;top:2px;width:5px;height:10px;
+    border:solid #fff;border-width:0 2px 2px 0;transform:rotate(42deg)
+  }
+  .step input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .step-body{flex:1;min-width:0}
+  .step-title{
+    font-family:var(--sans);font-weight:600;font-size:16.5px;line-height:1.3;
+    margin:0 0 4px;letter-spacing:-.005em;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap
+  }
+  .step-title .id{font-family:var(--mono);font-size:12.5px;color:var(--muted);font-weight:500;flex:none}
+  .step p{margin:0;font-size:15px;color:var(--ink-2)}
+  .step p + p{margin-top:9px}
+  .step.done .step-title{color:var(--muted)}
+  .step.done .step-title .name{text-decoration:line-through;text-decoration-color:var(--line-2)}
+
+  code{
+    font-family:var(--mono);font-size:.88em;background:var(--surface-2);
+    padding:1.5px 5px;border-radius:3px;color:var(--ink);
+    overflow-wrap:break-word
+  }
+  pre{
+    font-family:var(--mono);font-size:12.5px;line-height:1.55;margin:12px 0 0;
+    background:var(--surface-2);border:1px solid var(--line);border-radius:5px;
+    padding:12px 14px;overflow-x:auto
+  }
+  pre code{background:none;padding:0;font-size:inherit}
+  .cmd{color:var(--accent)}
+
+  .finding{
+    margin:12px 0 0;padding:12px 14px;border-left:3px solid var(--hazard);
+    background:var(--hazard-soft);border-radius:0 4px 4px 0
+  }
+  .finding p{font-size:14.5px;color:var(--ink-2);margin:0}
+  .finding .flabel{
+    font-family:var(--sans);font-weight:700;font-size:10.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--hazard);display:block;margin-bottom:5px
+  }
+
+  /* ---------- tables ---------- */
+  .tbl-wrap{overflow-x:auto;margin-top:12px}
+  table{border-collapse:collapse;width:100%;font-size:14px;min-width:380px}
+  th,td{text-align:left;padding:7px 12px 7px 0;border-bottom:1px solid var(--line)}
+  th{
+    font-family:var(--sans);font-weight:600;font-size:10.5px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line-2)
+  }
+  td.num,td.mono,th.num{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px}
+  td:last-child,th:last-child{padding-right:0}
+
+  .keys td:first-child{font-family:var(--mono);font-weight:700;color:var(--accent);width:1%;white-space:nowrap}
+
+  /* ---------- closing ---------- */
+  .closing{
+    margin-top:48px;padding:26px 28px;background:var(--surface);
+    border:1px solid var(--line);border-top:3px solid var(--ink);border-radius:0 0 6px 6px
+  }
+  .closing h2{font-size:21px;margin-bottom:14px}
+  .closing ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:9px}
+  .closing li{font-size:15px;color:var(--ink-2)}
+  footer{margin-top:30px;font-size:13.5px;color:var(--muted);font-family:var(--sans)}
+  footer code{font-size:12.5px}
+
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <p class="kicker">LUCID · Unitree G1 · SONIC deployment runner</p>
+    <h1>G1 Deployment Day</h1>
+    <p class="standfirst">
+      The order to do things in, and what each step is actually worth. Every step below
+      was either executed against a MuJoCo G1 on the DDS bus, or is marked as something
+      that cannot be.
+    </p>
+    <div class="warn">
+      <p><strong>Nothing in this bundle has ever been on a robot.</strong> Every number here is
+      simulation. This procedure cannot make a first hardware run safe — it can only stop you
+      discovering a software problem while the robot is powered.</p>
+    </div>
+  </header>
+
+  <div class="legend">
+    <span class="legend-item"><span class="tag reh">rehearsed</span> executed end to end, result quoted</span>
+    <span class="legend-item"><span class="tag read">read</span> from the runner source, not executed</span>
+    <span class="legend-item"><span class="tag hw">hardware</span> cannot be rehearsed in software</span>
+  </div>
+
+  <div class="progress">
+    <span class="progress-num"><span id="pdone">0</span>&thinsp;/&thinsp;<span id="ptotal">0</span></span>
+    <span class="bar"><i id="pbar"></i></span>
+    <button class="reset" id="reset" type="button">Reset for a new run</button>
+  </div>
+
+  <!-- ============ PHASE 0 ============ -->
+  <section class="phase">
+    <div class="phase-head"><span class="phase-no">PHASE 0</span><h2>The machine, the day before</h2></div>
+    <p class="phase-note">On the machine you will deploy <em>from</em> — the TensorRT engine is built per-machine and cached.</p>
+    <ul class="steps">
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s01">
+        <div class="step-body">
+          <label class="step-title" for="s01"><span class="id">0.1</span><span class="name">Toolchain</span><span class="tag reh">rehearsed</span></label>
+          <p>10.13 on x86_64, 10.7 on the robot's own Orin. Not a formality: the engine-vs-ONNX mean
+             disagreement is <code>1.45e-06</code> at 10.13 and <code>1.10e-04</code> at 10.16 — 76× worse
+             at the wrong version.</p>
+          <pre><code><span class="cmd">source</span> env.sh          <em># must print TensorRT 10.13</em>
+<span class="cmd">ldd</span> runner/target/release/g1_deploy_onnx_ref | grep cudart   <em># .so.12</em></code></pre>
+        </div></div></li>
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s02">
+        <div class="step-body">
+          <label class="step-title" for="s02"><span class="id">0.2</span><span class="name">Bundle self-test</span><span class="tag reh">rehearsed</span></label>
+          <p>Measured: <strong>7 pass, 0 fail, 1 warn.</strong> The warn is check 8, the start-pose step,
+             and it is expected — see 4.2. Any FAIL stops the day.</p>
+          <pre><code><span class="cmd">bash</span> test.sh</code></pre>
+        </div></div></li>
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s03">
+        <div class="step-body">
+          <label class="step-title" for="s03"><span class="id">0.3</span><span class="name">Engine parity — and write the number down</span><span class="tag reh">rehearsed</span></label>
+          <p>Measured on <code>deploy_dr</code>, TensorRT 10.13.3, FP32, 499 ticks:
+             <strong>max |delta| 6.2e-06, mean 4.2e-07.</strong></p>
+          <p><strong>Record the baseline per policy.</strong> <code>deploy_dr</code> sits near 2e-06 mean and
+             <code>no_dr</code> near 6.9e-05 on the <em>same</em> correctly-pinned install — a 33× spread that is
+             a property of the networks, not the machine. Judge a new export against its own first reading.</p>
+          <pre><code><span class="cmd">bash</span> drill.sh --play --parity</code></pre>
+        </div></div></li>
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s04">
+        <div class="step-body">
+          <label class="step-title" for="s04"><span class="id">0.4</span><span class="name">GPU headroom</span><span class="tag reh">rehearsed</span></label>
+          <p>The runner loads a 55 MiB engine and needs a CUDA context on top. Attempted on a 32 GB card
+             with training jobs holding it, this failed <strong>two different ways</strong>:</p>
+          <pre><code>183 MiB free → OOM reading the engine → std::runtime_error → SIGABRT
+168 MiB free → CUDA init error 2      → "Unable to set GPU device 0" → SIGSEGV</code></pre>
+          <div class="finding">
+            <span class="flabel">Fail-safe, but not loud</span>
+            <p>Both abort in the constructor at <code>:2300</code>, before the input interface exists at
+               <code>:2510</code> and before any DDS write — the simulator read <code>lowcmd=no</code> throughout
+               both, so the robot is never driven. But one path is a segfault, and neither says
+               "the GPU is busy". <strong>Do not share the deploy machine's GPU with training jobs.</strong></p>
+          </div>
+        </div></div></li>
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s05">
+        <div class="step-body">
+          <label class="step-title" for="s05"><span class="id">0.5</span><span class="name">Watch one full run</span><span class="tag reh">rehearsed</span></label>
+          <p>INIT ramp, ~5.5 s of fixed stand, the policy takes over, the robot goes down, the stop.
+             If you have not watched this in simulation, do not watch it for the first time on a robot.</p>
+          <pre><code><span class="cmd">bash</span> drill.sh --play --viewer      <em># needs a desktop session</em></code></pre>
+        </div></div></li>
+    </ul>
+  </section>
+
+  <!-- ============ PHASE 1 ============ -->
+  <section class="phase">
+    <div class="phase-head"><span class="phase-no">PHASE 1</span><h2>The network</h2></div>
+    <ul class="steps">
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s11">
+        <div class="step-body">
+          <label class="step-title" for="s11"><span class="id">1.1</span><span class="name">Address, link, and proof of DDS</span><span class="tag hw">hardware</span></label>
+          <pre><code><span class="cmd">sudo</span> ip addr add 192.168.123.222/24 dev enp3s0
+<span class="cmd">sudo</span> ip link set enp3s0 up
+<span class="cmd">ping</span> -c3 192.168.123.161
+<span class="cmd">sudo</span> tcpdump -i enp3s0 -c 20 udp portrange 7400-7500</code></pre>
+          <p>Silence on the tcpdump means DDS is not flowing. Fix it before anything else — the runner
+             otherwise sits forever printing <code>LowState is not available</code>, which looks like a hang
+             and is correct behaviour.</p>
+        </div></div></li>
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s12">
+        <div class="step-body">
+          <label class="step-title" for="s12"><span class="id">1.2</span><span class="name">run.sh will not guess a NIC</span><span class="tag reh">rehearsed</span></label>
+          <p>With no <code>192.168.123.x</code> interface present it refuses rather than falling back:
+             <code>no 192.168.123.x interface found</code>. Releasing Unitree's own controller happens inside
+             the runner at construction and can take several seconds on a real G1.</p>
+        </div></div></li>
+    </ul>
+  </section>
+
+  <!-- ============ PHASE 2 ============ -->
+  <section class="phase">
+    <div class="phase-head"><span class="phase-no">PHASE 2</span><h2>Safety</h2></div>
+    <p class="phase-note">None of this is in the software, and none of it can be rehearsed.</p>
+    <ul class="steps">
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s21">
+        <div class="step-body">
+          <label class="step-title" for="s21"><span class="id">2.1</span><span class="name">Hardwired emergency stop, within reach, tested</span><span class="tag hw">hardware</span></label>
+          <p>The runner's stop path is a software boolean plus a 35 rad/s joint-velocity abort and a
+             motor-temperature cutoff at 90 °C. <strong>None of those is an emergency stop.</strong> For a
+             humanoid, cutting power is itself a hazard, because the robot falls.</p>
+        </div></div></li>
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s22">
+        <div class="step-body">
+          <label class="step-title" for="s22"><span class="id">2.2</span><span class="name">Harness or gantry taking the weight</span><span class="tag hw">hardware</span></label>
+          <p>With slack for the motion. Required from <code>Init Done</code> onward, not just during the policy.</p>
+        </div></div></li>
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s23">
+        <div class="step-body">
+          <label class="step-title" for="s23"><span class="id">2.3</span><span class="name">Fallback controller ready, floor clear</span><span class="tag hw">hardware</span></label>
+          <p>Nobody inside the reachable volume. One thing here <em>is</em> rehearsed: <code>run.sh</code> reads its
+             safety checklist from <code>/dev/tty</code>, not stdin, so a pipe cannot answer it — with no
+             controlling terminal it refuses rather than arming a robot with nobody in the room.</p>
+        </div></div></li>
+    </ul>
+  </section>
+
+  <!-- ============ PHASE 3 ============ -->
+  <section class="phase">
+    <div class="phase-head"><span class="phase-no">PHASE 3</span><h2>The dry run — power on, stand, do not arm</h2></div>
+    <p class="phase-note">The first run with the robot powered should never reach the policy.</p>
+    <ul class="steps">
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s31">
+        <div class="step-body">
+          <label class="step-title" for="s31"><span class="id">3.1</span><span class="name">Launch with the clip pinned</span><span class="tag reh">rehearsed</span></label>
+          <pre><code><span class="cmd">bash</span> run.sh --policy deploy_dr --iface enp3s0 \
+       --motion walk_arc_cw_stop_001__A047</code></pre>
+          <div class="finding">
+            <span class="flabel">Always pass --motion</span>
+            <p>Which clip is motion index 0 is <strong>not defined</strong>.
+               <code>motion_data_reader.hpp:685</code> enumerates the directory with an unsorted
+               <code>std::filesystem::directory_iterator</code>, so it is readdir order and machine-dependent.
+               Measured here the clips come back <code>walk_ff</code>, <code>walk_arc</code>, <code>crouch_idle</code> —
+               not alphabetical, and not the order any listing shows you. Pinning one clip is the only way
+               to know what <code>T</code> will play.</p>
+          </div>
+        </div></div></li>
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s32">
+        <div class="step-body">
+          <label class="step-title" for="s32"><span class="id">3.2</span><span class="name">Support the robot from Init Done onward</span><span class="tag reh">rehearsed</span></label>
+          <p>Holding <code>default_angles</code> at the runner's own gains, unsupported, the robot sits down in
+             about 1.4 s in MuJoCo — ankle pitch (28.5 N·m/rad, derived from rotor inertia, not from the
+             balance moment) cannot hold the balance torque. The vendor's own sim config ships
+             <code>ENABLE_ELASTIC_BAND: True</code> for this reason.</p>
+          <p>This is a simulation result about a simulation model. It does not prove a real G1 falls over.
+             Treat it as a reason to have the harness on.</p>
+        </div></div></li>
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s33">
+        <div class="step-body">
+          <label class="step-title" for="s33"><span class="id">3.3</span><span class="name">There is no health check before arming</span><span class="tag reh">rehearsed</span></label>
+          <div class="finding">
+            <span class="flabel">The step the procedure wanted, and the runner does not have</span>
+            <p>Pressing <code>F</code> during the fixed stand does <strong>nothing</strong>. The temperature
+               handler sits inside <code>case ProgramState::CONTROL</code> (<code>:3859</code>), and so does the
+               <code>Loop timing</code> print (<code>:4049</code>). Rehearsed: <code>F</code> through the whole stand
+               produced not one line.</p>
+          </div>
+          <p>So in WAIT_FOR_CONTROL there are <strong>no motor temperatures, no LowState age, no loop
+             timing</strong>. A dry run establishes only that the engine loaded, that LowState is arriving
+             (else <code>Init Done</code> never prints), and that nothing errored.</p>
+          <p><strong>Consequence for sequencing:</strong> you cannot measure the realised control period before
+             arming. Those numbers first exist when the robot is already under policy control — so have
+             someone watching the console whose only job is those lines. Measured once armed:
+             <code>LowState age</code> 2.2–23.0 ms, policy inference 2.1–11.2 ms. Note 11.2 ms is over half
+             the 20 ms budget a 50 Hz loop has.</p>
+        </div></div></li>
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s34">
+        <div class="step-body">
+          <label class="step-title" for="s34"><span class="id">3.4</span><span class="name">Know what each exit does</span><span class="tag reh">rehearsed</span></label>
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>exit</th><th>what it does</th><th>leaves the robot</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">O</td><td>joins threads, writes one damping command kp 0, kd 8, tau 0</td><td><strong>limp — it goes down</strong></td></tr>
+              <tr><td class="mono">Ctrl-C</td><td>SIGINT. The runner installs <strong>no signal handler</strong></td><td><strong>holding the last command, nothing driving it</strong></td></tr>
+            </tbody>
+          </table></div>
+          <p>Rehearsed: SIGINT was sent during the fixed stand. The runner's log ends at <code>Init Done</code> —
+             no <code>Stopping G1Deploy</code>, no <code>Stop</code> — and the simulator went on reporting
+             <code>lowcmd=yes kp[0]=99.1 kd[0]=6.3</code> with the pelvis at 0.759 m for as long as it was watched.</p>
+          <div class="finding">
+            <span class="flabel">Do not assume that is benign</span>
+            <p>In MuJoCo the robot kept standing because the simulator applies the last LowCmd forever and the
+               band was on. A real G1's motor controller may have its own watchdog that does something else
+               when commands stop. This bundle cannot tell you which.</p>
+          </div>
+          <p><strong>On a supported robot, <code>O</code> is the exit to use</strong> — it is the one that leaves a
+             defined command on the wire. If you do hit Ctrl-C, run <code>stty sane</code>: the destructor that
+             restores your terminal never ran either.</p>
+        </div></div></li>
+    </ul>
+  </section>
+
+  <!-- ============ PHASE 4 ============ -->
+  <section class="phase">
+    <div class="phase-head"><span class="phase-no">PHASE 4</span><h2>The first armed run</h2></div>
+    <ul class="steps">
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s42">
+        <div class="step-body">
+          <label class="step-title" for="s42"><span class="id">4.2</span><span class="name">Understand the step you are about to take</span><span class="tag reh">rehearsed</span></label>
+          <p><code>]</code> hands the policy frame 0 of the reference, and all three shipped clips start far from
+             the pose the runner holds. Start with the smallest.</p>
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>clip</th><th class="num">RMS, 29 joints</th><th>worst leg joint</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">walk_arc_cw_stop_001__A047</td><td class="num"><strong>0.299 rad</strong></td><td class="mono">L_knee −0.548</td></tr>
+              <tr><td class="mono">walk_ff_stop_270_R…__A445_M</td><td class="num">0.341 rad</td><td class="mono">R_knee −0.546</td></tr>
+              <tr><td class="mono">crouch_idle_004__A246</td><td class="num">0.409 rad</td><td class="mono">R_hip_pitch −0.816</td></tr>
+            </tbody>
+          </table></div>
+          <p>The policy must close that in one control step, standing, on its feet — a step it never sees in
+             training, where every episode resets <em>onto</em> the reference with its velocities.</p>
+        </div></div></li>
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s43">
+        <div class="step-body">
+          <label class="step-title" for="s43"><span class="id">4.3</span><span class="name">Two keys, not one</span><span class="tag reh">rehearsed</span></label>
+          <pre><code>']'   arm    WAIT_FOR_CONTROL → CONTROL. Policy runs at 50 Hz,
+             reference parked at frame 0. THIS ALONE DOES NOT PLAY THE CLIP.
+'T'   play   run the clip from the current frame to its end.</code></pre>
+          <p>A policy left armed but unplayed tracks a still pose and looks like it is failing.
+             <code>T</code> is the only key that sets <code>operator_state.play</code>.</p>
+        </div></div></li>
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s44">
+        <div class="step-body">
+          <label class="step-title" for="s44"><span class="id">4.4</span><span class="name">Expect it to go down</span><span class="tag reh">rehearsed</span></label>
+          <pre><code>FIXED STAND   0.759 → 0.769 m   held 5.5 s   kp 99.1  kd 6.3
+POLICY        0.768 → 0.373 m   travelled 0.27 m
+AFTER STOP    0.063 → 0.064 m                kp 0.0   kd 8.0</code></pre>
+          <p>The reference clip walks an arc; the robot travelled 0.27 m. That gap is the missing
+             horizontal-position term — the observation has none at all, so the policy cannot tell it is off
+             the path. <strong>Treat every deployment as open-loop in the horizontal plane.</strong></p>
+        </div></div></li>
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s45">
+        <div class="step-body">
+          <label class="step-title" for="s45"><span class="id">4.5</span><span class="name">If the robot falls off the bus, the runner catches it</span><span class="tag reh">rehearsed</span></label>
+          <p>The one safety property in here that works the way you would want. The simulator was SIGKILLed
+             mid-policy — on hardware, a pulled cable or the robot powering off under you:</p>
+          <pre><code>[ERROR] Lost LowState data connection from robot!
+[ERROR] Safety check failed, stopping control.
+[DEBUG] Stopping G1Deploy...  →  Stop</code></pre>
+          <p>It goes through <code>Stop()</code>, so the damping command <em>is</em> written. Note what that means
+             physically: the correct response to losing the robot is to make it go limp. If the cable pulls
+             mid-motion, the robot goes down. That is the right call and it is still a fall.</p>
+        </div></div></li>
+    </ul>
+  </section>
+
+  <!-- ============ PHASE 5 ============ -->
+  <section class="phase">
+    <div class="phase-head"><span class="phase-no">PHASE 5</span><h2>Stop, and what recovery actually is</h2></div>
+    <ul class="steps">
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s51">
+        <div class="step-body">
+          <label class="step-title" for="s51"><span class="id">5.1</span><span class="name">O is terminal — it ends the process, not just the run</span><span class="tag read">read</span></label>
+          <p><code>operator_state.stop</code> is set in four places and cleared in none; <code>program_state_</code>
+             only ever moves forward; and <code>main</code> is
+             <code>while (!operator_state.stop) { sleep(0.02); }</code>. There is no key that goes back to a stand.
+             Confirmed in every rehearsal.</p>
+        </div></div></li>
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s52">
+        <div class="step-body">
+          <label class="step-title" for="s52"><span class="id">5.2</span><span class="name">The restart does not pick the robot up</span><span class="tag reh">rehearsed</span></label>
+          <div class="tbl-wrap"><table>
+            <thead><tr><th class="num">t</th><th class="num">pelvis</th><th class="num">kp[0]</th><th></th></tr></thead>
+            <tbody>
+              <tr><td class="num">44.7 s</td><td class="num">0.061 m</td><td class="num">0</td><td>cycle 1 stop — on the floor</td></tr>
+              <tr><td class="num">68.8 s</td><td class="num">0.064 m</td><td class="num">99.1</td><td><strong>cycle 2 INIT ramp begins, on a fallen robot</strong></td></tr>
+              <tr><td class="num">78.9 s</td><td class="num">0.133 m</td><td class="num">99.1</td><td>still down — and the runner printed <code>Init Done</code></td></tr>
+            </tbody>
+          </table></div>
+          <div class="finding">
+            <span class="flabel">Init Done is a timer, not a measurement</span>
+            <p><code>InitControl()</code> interpolates for <code>duration_ = 3 s</code> and declares itself finished.
+               Nothing checks that the robot is upright, that <code>default_angles</code> is reachable, or that the
+               feet are under the body. It then transitioned to CONTROL and played a whole clip to completion,
+               reporting every marker normally, with the robot flat on the ground.
+               <strong>A person has to put the robot back on its feet.</strong></p>
+          </div>
+        </div></div></li>
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s53">
+        <div class="step-body">
+          <label class="step-title" for="s53"><span class="id">5.3</span><span class="name">Repeating runs</span><span class="tag reh">rehearsed</span></label>
+          <p><code>standby.sh</code> pins one clip per launch, runs it through <code>run.sh</code>, and gates every
+             cycle on someone confirming the robot is upright and supported. It adds nothing to the runner —
+             each cycle is an ordinary <code>run.sh</code>, and the restart is what re-enters INIT.</p>
+          <pre><code><span class="cmd">bash</span> standby.sh --iface enp3s0</code></pre>
+        </div></div></li>
+    </ul>
+  </section>
+
+  <!-- ============ KEYS ============ -->
+  <section class="phase">
+    <div class="phase-head"><span class="phase-no">REF</span><h2>Operator keys</h2></div>
+    <div class="tbl-wrap"><table class="keys">
+      <thead><tr><th>key</th><th>effect</th></tr></thead>
+      <tbody>
+        <tr><td>]</td><td><strong>arm</strong> — WAIT_FOR_CONTROL → CONTROL. Arms only; does not play.</td></tr>
+        <tr><td>T</td><td><strong>play</strong> the clip from the current frame to its end</td></tr>
+        <tr><td>O</td><td><strong>emergency stop</strong> — kp 0, kd 8, tau 0. Terminal.</td></tr>
+        <tr><td>N / P</td><td>next / previous motion</td></tr>
+        <tr><td>R</td><td>reset the clip to frame 0, paused</td></tr>
+        <tr><td>I</td><td>reinitialise heading from the current IMU</td></tr>
+        <tr><td>F</td><td>motor temperatures — <strong>only while armed</strong>; silent in the stand</td></tr>
+        <tr><td>Ctrl-C</td><td>kills the process — <strong>no damping command, terminal left raw</strong></td></tr>
+      </tbody>
+    </table></div>
+    <p style="margin-top:14px;font-size:15px;color:var(--ink-2)">
+      Lower case works for all of them except <code>]</code>. The Unitree wireless remote is supported
+      unmodified via <code>--input-type gamepad</code> (or <code>manager</code> for both at once):
+      <strong>Start</strong>&nbsp;=&nbsp;<code>]</code>, <strong>Select</strong>&nbsp;=&nbsp;<code>O</code>,
+      <strong>A</strong>&nbsp;=&nbsp;<code>T</code>, <strong>B</strong>&nbsp;=&nbsp;<code>R</code>,
+      <strong>L1/R1</strong>&nbsp;=&nbsp;<code>P</code>/<code>N</code>. The bundled simulator does not publish
+      <code>wireless_remote</code>, so <strong>the remote cannot be rehearsed</strong> — the first button press
+      would be on the robot.
+    </p>
+  </section>
+
+  <div class="closing">
+    <h2>What this procedure still does not establish</h2>
+    <ol>
+      <li>Anything about behaviour on a robot. No hardware result of any kind exists.</li>
+      <li>That the fixed stand holds an unsupported G1. In simulation it does not.</li>
+      <li>That a policy survives the step at <code>]</code>. In simulation it does not.</li>
+      <li>That the wireless remote works — it cannot be rehearsed in this bundle.</li>
+      <li>Recovery has no calibrated band, dwell or horizon, so no policy has passed or failed a recovery
+          test. "0/16 falls" is a measurement on one clip, not a safety property.</li>
+    </ol>
+  </div>
+
+  <footer>
+    Full detail and the raw traces: <code>docs/DEPLOY_DAY.md</code>, <code>docs/DEPLOY_SEQUENCE.md</code>,
+    <code>docs/DEPLOY_G1.md</code>. Progress ticks are kept on this device only.
+  </footer>
+</div>
+
+<script>
+  (function () {
+    var KEY = "g1-deploy-day-v1";
+    var boxes = Array.prototype.slice.call(document.querySelectorAll('.step input[type=checkbox]'));
+    var done = document.getElementById('pdone');
+    var total = document.getElementById('ptotal');
+    var bar = document.getElementById('pbar');
+    total.textContent = boxes.length;
+
+    function load() {
+      try {
+        var raw = localStorage.getItem(KEY);
+        return raw ? JSON.parse(raw) : {};
+      } catch (e) { return {}; }
+    }
+    function save(state) {
+      try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+    }
+    function paint() {
+      var n = 0;
+      boxes.forEach(function (b) {
+        var step = b.closest('.step');
+        if (b.checked) { n++; step.classList.add('done'); }
+        else { step.classList.remove('done'); }
+      });
+      done.textContent = n;
+      bar.style.width = boxes.length ? (n / boxes.length * 100) + '%' : '0%';
+    }
+
+    var state = load();
+    boxes.forEach(function (b) {
+      if (state[b.id]) b.checked = true;
+      b.addEventListener('change', function () {
+        var s = load();
+        if (b.checked) s[b.id] = 1; else delete s[b.id];
+        save(s);
+        paint();
+      });
+    });
+    paint();
+
+    document.getElementById('reset').addEventListener('click', function () {
+      boxes.forEach(function (b) { b.checked = false; });
+      save({});
+      paint();
+    });
+  })();
+</script>
