@@ -33,7 +33,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POLICY=deploy_dr; IFACE=""; SIM=0; AUTO_SIM=1; ASSUME_SAFE=0; MOTION=""; EXTRA=()
-VIEWER=0; BAND=1
+VIEWER=0; BAND=1; CSV=auto; LOGDIR=""
 while [ $# -gt 0 ]; do case "$1" in
   --policy) POLICY="$2"; shift 2 ;;
   --iface)  IFACE="$2";  shift 2 ;;
@@ -41,6 +41,9 @@ while [ $# -gt 0 ]; do case "$1" in
   --no-auto-sim) AUTO_SIM=0; shift ;;
   --viewer) VIEWER=1; shift ;;
   --no-band) BAND=0; shift ;;
+  --csv-logs) CSV=1; shift ;;
+  --no-csv-logs) CSV=0; shift ;;
+  --log-dir) LOGDIR="$2"; shift 2 ;;
   --assume-safety-checklist) ASSUME_SAFE=1; shift ;;
   --motion) MOTION="$2"; shift 2 ;;
   --list)
@@ -187,6 +190,39 @@ echo "iface    $IFACE"
 # Printed in BOTH modes. It used to be simulation-only, which meant a real-robot
 # run -- the one where knowing the keys matters most -- got no key list at all.
 echo
+# EVERY run records itself. The first hardware run of this bundle was lost
+# because run.sh wrote nothing to disk and the operator's scrollback was the only
+# copy -- of the only hardware data the project had ever produced. A console log
+# costs nothing and there is no version of "we'll turn logging on next time" that
+# survives contact with a robot.
+#
+# stdbuf -oL matters: teeing makes the runner's stdout a pipe, and C++ stdio
+# switches from line- to fully-buffered on a pipe, so without it the operator
+# watching the console during an INIT ramp would see output in 4 KB lumps.
+RUNDIR="${LOGDIR:-$HERE/results/run/$(date +%Y%m%d-%H%M%S)-$POLICY${MOTION:+-$MOTION}}"
+mkdir -p "$RUNDIR"
+CONSOLE_LOG="$RUNDIR/console.log"
+# CSV logs default ON for a real robot and OFF for a bench run: on hardware every
+# tick is data that cannot be reproduced, in sim it is regenerable noise.
+[ "$CSV" = auto ] && { [ "$SIM" -eq 1 ] && CSV=0 || CSV=1; }
+if [ "$CSV" = 1 ]; then
+  EXTRA+=(--enable-csv-logs --logs-dir "$RUNDIR/csv")
+  mkdir -p "$RUNDIR/csv"
+fi
+{
+  echo "# lucid-g1-deploy run"
+  echo "# date     $(date -Is)"
+  echo "# policy   $POLICY"
+  echo "# motion   ${MOTION:-<all, index 0 is readdir order>}"
+  echo "# iface    $IFACE"
+  echo "# mode     $([ "$SIM" -eq 1 ] && echo SIMULATION || echo 'REAL ROBOT')"
+  echo "# commit   $(git -C "$HERE" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  echo "# tensorrt $(cat "$HERE/policies/.trt_built_with" 2>/dev/null || echo unknown)"
+  echo "# host     $(uname -n)"
+} > "$RUNDIR/run_info.txt"
+echo "log      $RUNDIR"
+echo
+
 echo "Keys:"
 echo "  ']'  ARM the policy. It starts running at 50 Hz, but the reference stays"
 echo "       parked at frame 0: this alone does NOT play the clip."
@@ -201,5 +237,12 @@ echo "Sequence: the runner ramps to default_angles and holds the fixed stand unt
 echo "you press ']'. Support the robot from 'Init Done' until you are done."
 
 # Not exec: the EXIT trap has to run so the simulator is stopped with the runner.
-"$RUNNER" "$IFACE" "$ONNX" "$MOTIONS_DIR/" \
-  --obs-config "$HERE/config/observation_config_lucid_g1_1570.yaml" "${EXTRA[@]}"
+# PIPESTATUS, not $?, because $? here is tee's.
+stdbuf -oL -eL "$RUNNER" "$IFACE" "$ONNX" "$MOTIONS_DIR/" \
+  --obs-config "$HERE/config/observation_config_lucid_g1_1570.yaml" "${EXTRA[@]}" \
+  2>&1 | tee -a "$CONSOLE_LOG"
+rc=${PIPESTATUS[0]}
+echo "# exit $rc at $(date -Is)" >> "$RUNDIR/run_info.txt"
+echo
+echo "log saved: $RUNDIR"
+exit "$rc"
