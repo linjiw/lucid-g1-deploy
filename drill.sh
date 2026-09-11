@@ -68,9 +68,11 @@ BAND=1
 PARITY=0
 RECORD=""
 # Default to the clip every measured number in this bundle is about. The runner
-# starts on motion index 0 = whatever sorts first, which is crouch_idle, so
-# without this the drill silently rehearses a different motion than
-# docs/RESULTS.md describes.
+# starts on motion index 0, and which clip that is is NOT DEFINED: motion_data_
+# reader.hpp:685 uses an unsorted directory_iterator, so it is readdir order and
+# machine-dependent. Without this the drill would silently rehearse whichever
+# clip the filesystem happened to hand back first, not the one docs/RESULTS.md
+# describes.
 MOTION=walk_arc_cw_stop_001__A047
 while [ $# -gt 0 ]; do case "$1" in
   --policy) POLICY="$2"; shift 2 ;;
@@ -118,7 +120,7 @@ echo "======================================================================"
 echo "  DEPLOYMENT DRILL -- $POLICY on a MuJoCo G1, over DDS on '$IFACE'"
 echo "======================================================================"
 echo "  init (wait for the runner) -> stand $STAND_S s -> policy $HOLD s -> stop $STOP_S s"
-echo "  motion        ${MOTION:-all three (runner starts on whichever sorts first)}"
+echo "  motion        ${MOTION:-all three (index 0 is readdir order -- unpredictable)}"
 echo "  elastic band  $( [ "$BAND" -eq 1 ] && echo 'ON through init and stand, released when the policy starts' || echo 'OFF -- the robot will sit down during INIT, see docs' )"
 if [ "$PLAY" -eq 1 ]; then
   echo "  playback      ON -- 'T' sent 1 s after ']', the clip runs to its end"

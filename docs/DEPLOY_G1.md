@@ -27,7 +27,9 @@ The export produces five ONNX heads. They are not interchangeable:
 | `..._smpl.onnx` | 1770 | action [29] | SMPL-reference variant |
 | `..._teleop.onnx` | 1197 | action [29] | VR 3-point teleop variant |
 
-`deploy.sh` defaults to the **split** path (`--cp <prefix>` resolves
+SONIC's own `deploy.sh` — the launcher in `gear_sonic_deploy`, **not** in this
+bundle, which ships `run.sh` and `drill.sh` instead — defaults to the **split**
+path (`--cp <prefix>` resolves
 `<prefix>_encoder.onnx` and `<prefix>_decoder.onnx`) because that is how the
 released SONIC controller ships. For a LUCID policy the **fused** path is
 simpler and is what this bundle is built for:
@@ -126,9 +128,11 @@ point to, and it is arm64-only. Copy it from the upstream SONIC repository's
 4. ROS 2 is optional. `setup_env.sh` sets `HAS_ROS2=1` and
    `RMW_IMPLEMENTATION=rmw_fastrtps_cpp` when it finds it, otherwise `HAS_ROS2=0`
    and a bundled FastRTPS profile. Only needed for `--output-type ros2`.
-5. Network: the robot is on `192.168.123.x`. `deploy.sh real` auto-detects the
-   interface with that prefix and falls back — check which interface it picked
-   before trusting it.
+5. Network: the robot is on `192.168.123.x`. Both SONIC's `deploy.sh real` and
+   this bundle's `run.sh` auto-detect the interface with that prefix — check
+   which one it picked before trusting it. `run.sh` refuses to guess if it
+   cannot find a `192.168.123.x` NIC, rather than falling back to something
+   else.
 
 **Launch, fused path:**
 
@@ -141,12 +145,21 @@ just run g1_deploy_onnx_ref <iface> \
     --input-type manager --output-type all
 ```
 
-Add `--disable-crc-check` for MuJoCo/loopback simulation; `deploy.sh sim` adds
-it automatically. Input types are `keyboard`, `gamepad`, `gamepad_manager`,
+Add `--disable-crc-check` for MuJoCo/loopback simulation; both `deploy.sh sim`
+and this bundle's `run.sh --sim` add it automatically, and neither adds it
+without the sim flag. Input types are `keyboard`, `gamepad`, `gamepad_manager`,
 `manager`, `zmq`, `zmq_manager`, `ros2`.
 
-**Bench first.** `deploy.sh sim` runs the same binary against the vendor MuJoCo
-simulator over loopback. Do that before `deploy.sh real`, every time.
+In this bundle the equivalent launch is one command, and it pins the clip:
+
+```bash
+bash run.sh --policy deploy_dr --iface <iface> --motion <clip>
+```
+
+**Bench first.** `bash run.sh --policy deploy_dr --sim --viewer` runs the same
+binary against a MuJoCo G1 over loopback, and `bash drill.sh --play --parity`
+scripts the whole sequence and checks the engine. Do that before any run on the
+robot, every time.
 
 ## 5. Timing
 
@@ -232,7 +245,8 @@ sweeps measure.
    `no_dr` at ~6.9e-05 on the same correctly-pinned TensorRT 10.13.3, a 33×
    spread that is a property of the networks, not of the install. Judge a new
    export against its own first reading, not against `deploy_dr`'s.
-4. Bench in `deploy.sh sim` first.
+4. Bench first: `bash drill.sh --play --parity`, then `bash run.sh --sim
+   --viewer` to drive it by hand.
 5. Measure the realised control period and end-to-end latency.
 6. Safety, which does not exist in this software and must be provided
    independently: a hardwired emergency stop, a fall-arrest harness or gantry,

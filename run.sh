@@ -2,6 +2,7 @@
 # Launch a policy from this bundle.  source env.sh first.
 #
 #   bash run.sh --policy deploy_dr --sim                   bench against MuJoCo
+#   bash run.sh --policy deploy_dr --sim --viewer          ...and watch the robot
 #   bash run.sh --policy deploy_dr --iface eth0            on the robot network
 #   bash run.sh --motion walk_arc_cw_stop_001__A047        pick the clip to track
 #   bash run.sh --list                                     show what is available
@@ -11,6 +12,15 @@
 # simulator again when the runner exits. Pass --no-auto-sim if you are already
 # running sim/run_robot_sim.py yourself -- two robots on one bus both publishing
 # rt/lowstate is worse than none.
+#
+# The simulated robot gets the elastic band and keeps its fall, the same robot
+# drill.sh rehearses against. Neither is cosmetic. Without the band it collapses
+# during the INIT ramp -- measured, 0.791 -> 0.131 m -- so ']' would arm the
+# policy on a robot already on the floor. Without --keep-fallen the vendor's
+# check_fall() resets the simulation below 0.2 m, snapping the robot back upright
+# at exactly the moment an emergency stop is meant to show it going down. The
+# band releases when the policy takes over, so it never helps the policy;
+# --no-band turns it off. See docs/DEPLOY_SEQUENCE.md.
 #
 # --disable-crc-check is NEVER added without --sim. On hardware that check is
 # what catches a corrupted LowState packet before you act on it.
@@ -23,26 +33,34 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POLICY=deploy_dr; IFACE=""; SIM=0; AUTO_SIM=1; ASSUME_SAFE=0; MOTION=""; EXTRA=()
+VIEWER=0; BAND=1
 while [ $# -gt 0 ]; do case "$1" in
   --policy) POLICY="$2"; shift 2 ;;
   --iface)  IFACE="$2";  shift 2 ;;
   --sim)    SIM=1; shift ;;
   --no-auto-sim) AUTO_SIM=0; shift ;;
+  --viewer) VIEWER=1; shift ;;
+  --no-band) BAND=0; shift ;;
   --assume-safety-checklist) ASSUME_SAFE=1; shift ;;
   --motion) MOTION="$2"; shift 2 ;;
   --list)
     echo "policies:"; for p in "$HERE"/policies/*.onnx; do echo "  $(basename "$p" _s8600_g1.onnx)"; done
     echo "motions:";  for m in "$HERE"/motions/*/; do echo "  $(basename "$m")"; done
     exit 0 ;;
-  --help|-h) sed -n '2,21p' "$0" | sed 's/^# \?//'; exit 0 ;;
+  --help|-h) sed -n '2,32p' "$0" | sed 's/^# \?//'; exit 0 ;;
   *) EXTRA+=("$1"); shift ;;
 esac; done
 
-# The runner starts on motion index 0, which is whatever sorts first in the
-# directory it is handed -- crouch_idle, for the three clips shipped here. That
-# is rarely what you want and it is not the clip the measured results in
-# docs/RESULTS.md describe. --motion narrows the directory to one entry, which
-# makes that clip index 0. ('N' still cycles motions at runtime.)
+# The runner starts on motion index 0 -- and which clip that is, is NOT DEFINED.
+# motion_data_reader.hpp:685 walks the directory with a bare
+# std::filesystem::directory_iterator and never sorts, so index 0 is readdir
+# order: filename-hash order on ext4, and it can differ between the machine you
+# bench on and the machine you deploy from. Measured here, the three shipped
+# clips come back walk_ff, walk_arc, crouch_idle -- NOT alphabetical.
+#
+# So never hand the runner a directory of clips and assume you know which one
+# 'T' will play. --motion narrows the directory to one entry, which is the only
+# way to make index 0 deterministic. Use it for every hardware run.
 MOTIONS_DIR="$HERE/motions"
 if [ -n "$MOTION" ]; then
   [ -d "$HERE/motions/$MOTION" ] || {
@@ -90,6 +108,11 @@ robot_on_bus() {
   return 1
 }
 
+if [ "$SIM" -eq 0 ] && { [ "$VIEWER" -eq 1 ] || [ "$BAND" -eq 0 ]; }; then
+  echo "--viewer and --no-band configure the bundled simulator; without --sim there" >&2
+  echo "is no simulator to configure. Ignoring them." >&2
+fi
+
 if [ "$SIM" -eq 1 ]; then
   EXTRA+=(--disable-crc-check)
   SIMPY="${LUCID_SIM_PYTHON:-$HERE/.venv-sim/bin/python}"
@@ -101,12 +124,20 @@ if [ "$SIM" -eq 1 ]; then
     echo "robot    NOT AVAILABLE: no .venv-sim. Run setup.sh, or start a robot"
     echo "         yourself. Without one the runner waits forever for LowState."
   else
-    "$SIMPY" -u "$HERE/sim/run_robot_sim.py" --iface "$IFACE" --headless \
-      --status-hz 0 >"${TMPDIR:-/tmp}/lucid_run_sim.log" 2>&1 &
+    # The same robot drill.sh rehearses against -- see the note at the top of
+    # this file for what the band and --keep-fallen are each doing.
+    SIM_ARGS=(--iface "$IFACE" --status-hz 0 --keep-fallen)
+    if [ "$VIEWER" -eq 0 ]; then SIM_ARGS+=(--headless); fi
+    if [ "$BAND"   -eq 1 ]; then SIM_ARGS+=(--band); fi
+    "$SIMPY" -u "$HERE/sim/run_robot_sim.py" "${SIM_ARGS[@]}" \
+      >"${TMPDIR:-/tmp}/lucid_run_sim.log" 2>&1 &
     SIM_PID=$!
     sleep 3
     if kill -0 "$SIM_PID" 2>/dev/null; then
       echo "robot    MuJoCo on the DDS bus (pid $SIM_PID), log ${TMPDIR:-/tmp}/lucid_run_sim.log"
+      echo "         viewer $( [ "$VIEWER" -eq 1 ] && echo "on" || echo "off (--viewer)" )" \
+           "  band $( [ "$BAND" -eq 1 ] && echo "on (released at policy start)" || echo "off (--no-band)" )" \
+           "  fall kept"
     else
       echo "robot    simulator failed to start -- see ${TMPDIR:-/tmp}/lucid_run_sim.log"
       SIM_PID=""
@@ -118,7 +149,10 @@ echo "policy   $ONNX"
 if [ -n "$MOTION" ]; then
   echo "motion   $MOTION"
 else
-  echo "motions  $HERE/motions/  (starts on $(basename "$(ls -d "$HERE"/motions/*/ | head -1)"); 'N' cycles)"
+  echo "motions  $HERE/motions/  ('N' cycles)"
+  echo "         WARNING: which clip is index 0 is readdir order, not alphabetical,"
+  echo "         and it is not predictable. Watch the 'Started with motion:' line"
+  echo "         below, or pass --motion <name> to pin it. See --help."
 fi
 echo "iface    $IFACE"
 [ "$SIM" -eq 1 ] && echo "mode     SIMULATION (CRC check disabled)" || {

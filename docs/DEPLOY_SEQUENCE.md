@@ -122,6 +122,31 @@ which re-enters INIT and ramps from wherever the joints ended up back to
 hands. The ramp assumes the feet can take load, and after a stop they are
 usually not under the robot.
 
+**The restart does not pick the robot up, and it does not tell you so.** Two
+cycles against one persistent MuJoCo robot, `--keep-fallen` so the fall stands:
+
+| t | pelvis | kp[0] | |
+|---|---|---|---|
+| 44.7 s | 0.061 m | 0 | cycle 1 stop — on the floor |
+| 66.8 s | 0.064 m | 0 | limp, slid to (−0.48, −1.10) |
+| 68.8 s | 0.064 m | 99.1 | **cycle 2 INIT ramp begins, on a fallen robot** |
+| 74.9 s | 0.061 m | 99.1 | still down |
+| 78.9 s | 0.133 m | 99.1 | still down — and the runner printed `Init Done` |
+
+The runner then transitioned to CONTROL and played `crouch_idle_004__A246` to
+completion, reporting every marker exactly as it does on a healthy run, with the
+robot flat on the ground the whole time.
+
+`Init Done` is a **timer, not a measurement**. `InitControl()` interpolates for
+`duration_ = 3 s` and declares itself finished; nothing in it checks that the
+robot is upright, that `default_angles` is reachable from where the joints are,
+or that the feet are under the body. So the software cannot distinguish a
+recovered stand from a robot lying on its side, and it will report the second
+one as success.
+
+A person has to put the robot back on its feet. `standby.sh` gates every cycle
+on someone confirming exactly that.
+
 If you need a stop that holds the robot up, that is a hardware property, not a
 software one. No amount of policy training changes what `kp = 0` does.
 
@@ -200,8 +225,16 @@ term, visible directly. And it went **down within seconds**, which is the step a
 `]` described below, not a failure of the rehearsal.
 
 Pass `--motion <name>` to rehearse a different shipped clip, or `--all-motions`
-to hand the runner all of them (the runner then starts on whichever sorts
-first — `crouch_idle` — and `N` cycles).
+to hand the runner all of them and cycle with `N`.
+
+**With more than one clip loaded, which one is motion index 0 is not defined.**
+`motion_data_reader.hpp:685` enumerates the directory with an unsorted
+`std::filesystem::directory_iterator`, so index 0 is readdir order — filename
+hash order on ext4, and not necessarily the same on the machine you deploy from
+as on the one you benched on. Measured on the three clips shipped here it comes
+back `walk_ff`, `walk_arc`, `crouch_idle`, which is neither alphabetical nor the
+order they are listed anywhere. On hardware, pass `--motion` and run one clip at
+a time; that is the only way to know what `T` will play.
 
 The drill reads the runner's phase transitions off its own log, and detects the
 WAIT_FOR_CONTROL → CONTROL edge from the wire alone: in the pre-policy phases
@@ -307,5 +340,5 @@ a measured fact about hardware. Nothing in this bundle has been on a robot.
    **1.10e-04 at 10.16** — systematically 76× worse at the wrong version. Run
    `bash drill.sh --parity` on the machine you will deploy from.
 9. Read `../README.md` **Limits**. In particular: these policies cannot perceive
-   their own horizontal position, and no value-level parity against the runner
-   has ever been run.
+   their own horizontal position — treat any deployment as open-loop in the
+   horizontal plane.

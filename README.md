@@ -30,6 +30,7 @@ test.sh     verify the bundle end to end -- eight checks
 evaluate.sh reproduce the DR-perturbation and latency measurements in MuJoCo
 drill.sh    rehearse the deployment sequence against a MuJoCo G1 over DDS
 run.sh      launch a policy
+standby.sh  the operator loop: pick a clip, run it, reset to the stand, repeat
 ```
 
 ## Four steps on a new machine
@@ -101,13 +102,46 @@ AFTER STOP      43.7- 49.7s   0.064 ->  0.069    0.04      0.0    8.0
 keyboard, which is the closer rehearsal of a real run:
 
 ```bash
-bash run.sh --policy deploy_dr --iface lo --sim
+bash run.sh --policy deploy_dr --iface lo --sim --viewer
 ```
 
 Wait for `Init Done`, then `]` to arm, `T` to play, `O` to stop. `run.sh` prints
 the whole key list at startup. `--sim` also defaults `--iface` to `lo`, adds
 `--disable-crc-check`, and stops the simulator when the runner exits; pass
 `--no-auto-sim` if you are already running `sim/run_robot_sim.py` yourself.
+`--viewer` shows the MuJoCo window (needs a desktop session); without it the
+robot is there on the bus but you cannot see it.
+
+The simulated robot gets the same support `drill.sh` uses: the elastic band
+through init and the fixed stand, released the instant the policy takes over,
+and a fall left where it lands. Both matter. Unsupported, the robot collapses
+during the INIT ramp — 0.791 → 0.131 m, measured — so `]` would arm the policy
+on a robot already on the floor; and the vendor's `check_fall()` otherwise
+resets the simulation below 0.2 m, snapping the robot upright at exactly the
+moment the emergency stop is meant to show it going down. `--no-band` turns the
+band off if you want to see that.
+
+**The operator loop — `standby.sh`.** One clip at a time, keyboard, with a reset
+to the init pose between runs:
+
+```bash
+bash standby.sh --sim --viewer            # rehearse the loop, no robot
+bash standby.sh --iface enp3s0            # on the robot network
+```
+
+It lists the clips with the size of the step each one asks for at `]`, runs the
+one you pick through `run.sh`, and then waits for a person before going again.
+Each cycle is an ordinary `run.sh`, so nothing in the SONIC runner is modified
+or bypassed — the restart is what re-enters INIT and ramps to `default_angles`.
+
+**It will not stand a fallen robot up.** Measured across two cycles on one
+persistent MuJoCo robot: cycle 1 stopped with the pelvis at 0.061 m, cycle 2's
+INIT ramp commanded `default_angles` at full PD, printed `Init Done` on its 3 s
+timer with the pelvis at 0.133 m, then armed and played a whole clip with the
+robot flat on the ground — every marker reported normally. `Init Done` is a
+timer, not a measurement; `InitControl()` never checks that the robot is
+upright. Put it back on its feet yourself. `docs/DEPLOY_SEQUENCE.md` §5 has the
+trace.
 
 **Value-level parity** — the TensorRT engine against the shipped ONNX, on the
 runner's own observations. This is the check that a version-mismatched TensorRT
