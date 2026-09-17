@@ -1,7 +1,7 @@
 # lucid-g1-deploy
 
 A self-contained bundle for running LUCID motion-tracking policies on a Unitree
-G1 through SONIC's C++ deployment runner. Copy the whole directory to another
+G1 — the 29-DoF one — through SONIC's C++ deployment runner. Copy it to another
 Ubuntu machine and follow the four steps below.
 
 This bundle has been on a G1 once — `INIT` and the fixed stand, in a gantry
@@ -40,7 +40,10 @@ standby.sh  the operator loop: pick a clip, run it, reset to the stand, repeat
 ## Four steps on a new machine
 
 ```bash
-scp -r lucid-g1-deploy/ user@newbox:~/          # ~272 MB
+rsync -a --exclude .git --exclude .venv --exclude .venv-sim --exclude .build \
+      --exclude runner/target --exclude runner/build --exclude results \
+      --exclude 'policies/*.trt' --exclude policies/.trt_built_with \
+      lucid-g1-deploy/ user@newbox:~/lucid-g1-deploy/    # ~286 MiB, 1,419 files
 ssh user@newbox
 cd ~/lucid-g1-deploy
 
@@ -50,9 +53,67 @@ bash build.sh          # a few minutes the first time
 bash test.sh           # eight checks: seven pass, one warns (the jump at ']')
 ```
 
-Target: **Ubuntu 22.04, x86_64, NVIDIA GPU.** On a Jetson (arm64) skip
-`setup.sh` and use `runner/scripts/install_deps.sh`, which handles the arm64
-packages; everything else is the same.
+`build.sh` builds the deployment binary and nothing else. The runner's gtest
+unit tests are opt-in — `cmake -S runner -B .build -DG1_BUILD_TESTS=ON`, which
+needs `libgtest-dev` — and the configure step reaches the network nowhere: no
+live `FetchContent`, `ExternalProject` or `file(DOWNLOAD` call is left in any
+CMake file under `runner/` outside `thirdparty/`, grepped here. The mentions
+that remain are all inside one comment in
+`runner/src/g1/g1_deploy_onnx_ref/CMakeLists.txt` — the block opening
+`# test executable: OFF by default, and not because the tests are unwanted.` —
+which records the googletest `FetchContent` that used to run at configure time
+and was removed.
+
+Copy the source tree, not the working directory. `scp -r lucid-g1-deploy/` is
+1.5 GB here — it carries everything `.gitignore:1-13` refuses to commit (`.venv`
+434M, `.venv-sim` 349M, `results/` 96M, `policies/*.trt` 112M, `.build` 16M),
+plus 152M of `.git` history the new machine can re-clone — and the bytes are not
+the worst of it. `.build/CMakeCache.txt:607,686` records the absolute paths it
+was configured in, and `build.sh:6` reuses `$HERE/.build`, so under a different
+home cmake has a cache it will not accept. And `scp -r` dereferences symlinks,
+so `.venv/bin/python` — a symlink to `/usr/bin/python3` here — arrives as a real
+copy of this box's x86_64 interpreter, which an Orin cannot execute at all. That
+one repairs itself: `setup.sh` gates the venv rebuild on the imports working
+rather than on `bin/python` existing — its `venv_ok` runs
+`import numpy, onnxruntime, yaml, joblib, scipy, mujoco` through that
+interpreter — so a copied `.venv` fails the import and is deleted and rebuilt.
+The cost is 434 MB of transfer wasted, not a machine you cannot repair. The
+`rsync` above, measured here with `rsync -an --stats`, is about 286 MiB across
+1,419 files. Where the new machine has network, the `git clone` at the top of
+this README is simpler still.
+
+Target: **Ubuntu 22.04, x86_64, NVIDIA GPU**, and a **29-DoF G1**:
+`G1_NUM_MOTOR = 29` (`robot_parameters.hpp:32`), policies are
+`obs_dict [1,1570]` → `action [1,29]`, and the runner initialises
+Dex3 hands unconditionally (`g1_deploy_onnx_ref.cpp:2188`) and publishes hand
+commands every writer cycle (`:2682`). The hand *state* read is null-guarded
+(`:2909`), so a G1 without hands would log zeros there — but nothing in this
+bundle has ever been run on a 23-DoF or hand-less G1.
+
+The **arm64/Orin path is not `setup.sh`-equivalent** — see
+`docs/ETHERNET_AND_SDK.md`, "Deploying on the robot's own Orin".
+`runner/scripts/install_deps.sh` installs the arm64 apt packages, `just` and a
+**CPU** onnxruntime 1.16.3 into `/opt/onnxruntime` (`:380`, `:383`, `:390`); it
+installs no TensorRT — its own closing advice (`:856`, `:884`) tells you to make
+sure TensorRT is there yourself — and it creates neither venv. So on an Orin you
+must additionally pin TensorRT 10.7 under JetPack 6 and create
+`.venv`/`.venv-sim` yourself, or `test.sh` falls back to a system `python3` with
+none of the packages (`PY="${PYTHON:-python3}"`) and check 7, the DDS robot
+simulator, skips for want of `.venv-sim`. `onnxruntime_ROOT` resolves without
+help: the x64 GPU glob misses on arm64, so `env.sh` tries a widened
+`onnxruntime-linux-*` glob under the toolchain directory and then
+`/opt/onnxruntime`, taking either only if it carries `lib/cmake/onnxruntime`
+(`[ -d /opt/onnxruntime/lib/cmake/onnxruntime ]`). `/opt/onnxruntime` is where
+`install_deps.sh` puts it: `ONNX_INSTALL_PATH` defaults to it (`:380`) and the
+unpacked tree is moved there at `:416`. Export `onnxruntime_ROOT` by hand only
+if that directory is absent — `build.sh:5` aborts with
+`run 'source env.sh' first` when nothing set it. `env.sh`'s TensorRT probe
+follows `$(uname -m)`, so on an Orin it reads
+`/usr/include/aarch64-linux-gnu/NvInferVersion.h` — JetPack's multiarch path —
+and when nothing is there it names `docs/ETHERNET_AND_SDK.md` rather than
+`setup.sh`, because `setup.sh` is the one thing that will not run on aarch64 (it
+exits on `[ "$(uname -m)" = "x86_64" ] ||`). All of this is read from those
+files, not executed on an Orin.
 
 If `setup.sh` stops on `apt-get update`, a broken third-party repo elsewhere on
 the machine is failing and `set -e` is doing its job — fix or disable that repo
@@ -83,7 +144,15 @@ bash drill.sh --play --parity     # ...and check the TensorRT engine vs the ONNX
 bash drill.sh --viewer            # show the MuJoCo window (needs a desktop session)
 bash drill.sh --motion <name>     # another clip; `bash run.sh --list` shows them
 bash drill.sh --hold 12           # longer in CONTROL before the stop
+bash drill.sh --latency 60        # 60 ms of actuation delay at the robot
 ```
+
+`--latency` delays every LowCmd inside the simulated robot before it reaches the
+joints, and in the viewer `=` / `-` move it by 5 ms and `0` clears it (`drill.sh`
+passes it through as `sim/run_robot_sim.py --latency-ms`). It perturbs the plant
+the runner is driving over DDS — not the same harness as `evaluate.sh`'s latency
+ladder, which runs its own MuJoCo rollouts through `tools/mujoco_sweep.py` with
+no runner and no DDS, so the two sets of numbers are not comparable.
 
 A healthy `--play` run reaches every marker and ends with the robot on the
 floor, which is what an emergency stop *is*:
@@ -112,7 +181,11 @@ bash run.sh --policy deploy_dr --iface lo --sim --viewer
 Wait for `Init Done`, then `]` to arm, `T` to play, `O` to stop. `run.sh` prints
 the whole key list at startup. `--sim` also defaults `--iface` to `lo`, adds
 `--disable-crc-check`, and stops the simulator when the runner exits; pass
-`--no-auto-sim` if you are already running `sim/run_robot_sim.py` yourself.
+`--no-auto-sim` if you are already running the robot simulator yourself — start
+it as `"$LUCID_SIM_PYTHON" sim/run_robot_sim.py`, not under `python3`: only
+`.venv-sim` carries the cyclonedds 0.10.2 bindings, and `env.sh` exports both
+that interpreter and the `PYTHONPATH` the vendored SDK needs (the script's USAGE
+block says so).
 `--viewer` shows the MuJoCo window (needs a desktop session); without it the
 robot is there on the bus but you cannot see it.
 
@@ -130,7 +203,7 @@ to the init pose between runs:
 
 ```bash
 bash standby.sh --sim --viewer            # rehearse the loop, no robot
-bash standby.sh --iface enp3s0            # on the robot network
+bash standby.sh                           # on the robot network, NIC auto-detected
 ```
 
 It lists the clips with the size of the step each one asks for at `]`, runs the
@@ -160,6 +233,14 @@ compared 499 ticks
 max |delta|   5.722e-06      mean |delta|  4.204e-07
 PASS -- the TensorRT engine reproduces the ONNX policy to 5.7e-06
 ```
+
+That is one run, and **Limits** #2 quotes a different one (mean 1.45e-06, max
+2.37e-03). Both pass: the mean turns on whether the run happens to contain the
+single logging-artefact tick, and the run above does not — its max is 5.722e-06,
+not 2.37e-03. The evidence is in `tools/check_runtime_parity.py`, under "runs
+that happen to contain no such tick come out at max 5.1e-06 and 6.2e-06";
+`docs/DEPLOY_DAY.md` says it again under "Two different means are both correct".
+Record your own first reading rather than dividing one against the other.
 
 **Policy comparison**, no robot needed (~40 min):
 
@@ -195,6 +276,7 @@ no failures, then `bash drill.sh --play --parity`. If parity does not pass, stop
 DDS traffic before running anything that moves:
 
 ```bash
+ip link                                                 # enp3s0 is an example
 sudo ip addr add 192.168.123.222/24 dev enp3s0
 sudo ip link set enp3s0 up
 ping -c3 192.168.123.161
@@ -215,16 +297,36 @@ cutting power is itself a hazard, because the robot falls.
 RMS away from the pose the runner holds, so the policy is asked to close that
 gap in one control step the moment you press `]`.
 
-**5. Launch.**
+**5. Launch.** Pass `--motion` on every hardware run. The runner starts on
+motion index 0, and which clip that is comes from `readdir` order, not
+alphabetical order — `motion_data_reader.hpp:685` walks the directory with an
+unsorted `std::filesystem::directory_iterator`, and `run.sh` says so in the
+comment above its `MOTIONS_DIR` — so without it you do not know what `T` will
+play; `run.sh` prints a three-line warning when it is missing.
 
 ```bash
-bash run.sh --policy deploy_dr                  # auto-detects a 192.168.123.x NIC
-bash run.sh --policy deploy_dr --iface enp3s0   # explicit
+CLIP=walk_arc_cw_stop_001__A047                 # bash run.sh --list shows them
+bash run.sh --policy deploy_dr --motion "$CLIP"            # NIC auto-detected
+bash run.sh --policy deploy_dr --motion "$CLIP" --iface enp3s0   # explicit NIC
 ```
 
-`run.sh` refuses to guess if it cannot find a `192.168.123.x` interface, never
-adds `--disable-crc-check` without `--sim`, and asks you to confirm the safety
-checklist from `/dev/tty` — a pipe cannot answer it.
+`run.sh` refuses to guess if it cannot find a `192.168.123.x` interface, and
+asks you to confirm the safety checklist from `/dev/tty` — a pipe cannot answer
+it. It never adds `--disable-crc-check` without `--sim`, and a hand-passed one
+is now refused rather than obeyed: that flag also gates the 35 rad/s
+joint-velocity abort (`g1_deploy_onnx_ref.cpp:2832`,
+`if (body_dq[i] > 35 && !disable_crc_check_)`), so it removes two guards and
+names one.
+
+Every run records itself, under `results/run/<timestamp>-<policy>[-<motion>]/`:
+`console.log`, `run_info.txt` (date, policy, motion, iface, commit, the runner
+binary that actually ran, the full argv, GPU, host and the exit code) and, on
+hardware, `csv/` — the runner's per-tick CSV logs, on by default for a real
+robot and off for `--sim` (`--csv-logs` / `--no-csv-logs` override that;
+`--log-dir <dir>` puts the run directories on another disk). `run.sh` prints the
+path when the run starts and again, as `log saved:`, when it ends. `results/` is
+gitignored (`.gitignore:13`), so that directory is the only copy of a hardware
+run until someone moves it off the machine.
 
 **6. Drive it.** These are the runner's keys, the same ones `drill.sh` sends:
 
@@ -236,7 +338,10 @@ checklist from `/dev/tty` — a pipe cannot answer it.
 | `R` | reset the clip to frame 0, paused |
 | `O` | **emergency stop** — kp 0, kd 8, tau 0 |
 
-Lower case works for all of them except `]`.
+Lower case works for all of them except `]`. With `--motion` the runner sees a
+directory holding that one clip (`run.sh` symlinks it into a fresh temporary
+`MOTIONS_DIR`), so `N` / `P` have nothing to cycle to — they are for bench runs
+with more than one clip loaded.
 
 **7. After a stop, there is no step 8.** `O` is terminal:
 `operator_state.stop` is never cleared and `program_state_` never moves
@@ -256,10 +361,13 @@ feet can take load and after a stop they usually cannot.
 | `parity/` | golden (observation, action) traces for a value-level parity test |
 | `clips/` | the three source clips, so the MuJoCo evaluation runs with no extra setup |
 | `tools/` | validator, bundle verifier, clip converter, parity harness, MuJoCo player and sweep |
-| `runner/` | the C++ deployment runner source, buildable as-is, with `unitree_sdk2` and CycloneDDS 0.10.2 vendored for x86_64 and aarch64 |
+| `runner/` | the C++ deployment runner source, buildable as-is, with `unitree_sdk2` and CycloneDDS 0.10.2 vendored for x86_64 and aarch64; it also carries upstream SONIC's own `deploy.sh`, kept only so `runner/` stays diffable — it is **not** this bundle's entry point and must not be run |
 | `sdk/` | `unitree_sdk2py`, vendored verbatim |
 | `sim/` | a MuJoCo G1 that speaks the robot's own DDS protocol, so the runner can be rehearsed with no robot |
-| `docs/` | the deployment guide, the sequence, the wiring, the measured results, and the demo video |
+| `docs/` | the deploy-day procedure (`DEPLOY_DAY.md`, and `deploy-day-checklist.html` as its tick-through page), the deployment guide, the sequence, the wiring, the measured results, the hardware-run log and the demo video |
+| `MANIFEST.json` | the bundle's own receipt: file hashes, the policy/config table, and the start-pose step per clip that `standby.sh` prints beside every clip (its `clip_note()` reads `start_pose_step` out of this file) |
+| `NOTICE` | what came from where — the vendored SONIC, Unitree and CycloneDDS code and their licences |
+| `results/` | sweep, drill and per-run output. Written by `evaluate.sh`, `drill.sh` and every `run.sh` (`results/run/<timestamp>-<policy>[-<motion>]/`), never committed (`.gitignore:13`); `docs/RESULTS.md` is the version of record, and a hardware run's directory has to be copied off by hand |
 
 ## The two policies
 
@@ -337,8 +445,13 @@ config; validate it with `tools/validate_deploy_obs_config.py` before building.
    The version pin is visible here. Under TensorRT **10.16** the same test gave
    mean **1.10e-04** — systematically off on every tick, 76× worse. SONIC's
    `danger` note about using anything other than 10.13 is not hypothetical.
-   Reproduce with `bash drill.sh --parity`; the reasoning and the ruled-out
-   alternatives are in `tools/check_runtime_parity.py`.
+   Reproduce with `bash drill.sh --play --parity`: without `--play`, `drill.sh`
+   never sends `T` — the one line that sends it is
+   `[ "$PLAY" -eq 1 ] && { sleep 1; printf 'T'; }` — and the comparison is
+   against a reference parked at frame 0, a much narrower input distribution
+   than the ticks above.
+   The reasoning and the ruled-out alternatives are in
+   `tools/check_runtime_parity.py`.
 
    **That 1e-06 is a property of this network, not a pass mark for any policy.**
    Both figures above are `deploy_dr`. Running the same test on `no_dr` — same
@@ -417,7 +530,7 @@ Each of these was found by running something, after static checks had passed.
 Apache 2.0 (`LICENSE`). This bundle redistributes NVIDIA's GR00T-WholeBodyControl
 (Apache 2.0), Unitree's `unitree_sdk2` and `unitree_sdk2_python` (BSD 3-Clause)
 and Eclipse Cyclone DDS — see `NOTICE` for what came from where, and
-`sim/VENDOR_PATCHES.md` for the four places vendored code was changed.
+`sim/VENDOR_PATCHES.md` for the six places vendored code was changed.
 
 No upstream model weights are redistributed. Both policies were trained from
 scratch in this project.
