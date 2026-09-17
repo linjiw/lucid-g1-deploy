@@ -232,30 +232,54 @@ else()
   message(STATUS "ROS2 not found - building without ROS2InputHandler support")
 endif()
 
-# test executable:
-include(FetchContent)
+# test executable: OFF by default, and not because the tests are unwanted.
+#
+# This block used to open with include(FetchContent) +
+# FetchContent_Declare(googletest URL
+# https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip) +
+# FetchContent_MakeAvailable(googletest), which runs at CONFIGURE time on the
+# default path -- runner/CMakeLists.txt:24 has BUILD_SRCS ON, :244
+# add_subdirectory(src) -- so the first `bash build.sh` on a machine reached out
+# to github.com. That fails on a deploy box with no route out, which is the
+# normal state once the box has been given its static 192.168.123.x address for
+# the robot, and the failure lands in the middle of a build rather than during
+# setup. It was also redundant: setup.sh apt-installs libgtest-dev, and
+# `dpkg -L libgtest-dev` lists cmake/GTest/GTestConfig.cmake, libgtest.a and
+# libgtest_main.a -- everything find_package(GTest REQUIRED) below needs, with
+# no download. Dropped rather than pre-seeded, and the whole test target put
+# behind an option so the binary this bundle deploys needs neither the network
+# nor gtest to build.
+#
+#   cmake -S runner -B .build -DG1_BUILD_TESTS=ON   builds run_tests again
+#
+# G1_BUILD_TESTS, not CMake's own BUILD_TESTING: BUILD_TESTING is the variable
+# include(CTest) defines, and it defaults to ON. Nothing in runner/ includes
+# CTest or calls enable_testing() today -- checked, no hit outside thirdparty --
+# but an upstream commit or a parent project that added this tree could add one
+# at any time, and the option would then default back ON and silently restore
+# the configure-time behaviour removed above. A project-specific name cannot be
+# flipped by someone else.
+#
+# Nothing in this bundle invokes run_tests: no script, no doc, and not
+# runner/.justfile either -- its `test` recipe (:31-32) only echoes "Running
+# tests...". test.sh exercises the built runner itself instead.
+option(G1_BUILD_TESTS "Build the runner's gtest unit tests (needs libgtest-dev)" OFF)
+if(G1_BUILD_TESTS)
+  find_package(GTest REQUIRED)
 
-# Download and make GoogleTest available
-FetchContent_Declare(
-  googletest
-  URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
-)
-FetchContent_MakeAvailable(googletest)
+  file(GLOB_RECURSE TEST_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/*.cpp)
 
-find_package(GTest REQUIRED)
+  add_executable(run_tests ${TEST_SRCS})
+  target_link_directories(run_tests PRIVATE ${CUDA_LINK_DIRS})
+  target_link_libraries(run_tests GTest::GTest GTest::Main ${EXE_LIBS})
+  target_include_directories(run_tests PUBLIC ${EXE_INCLUDES})
 
-file(GLOB_RECURSE TEST_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/*.cpp)
-
-add_executable(run_tests ${TEST_SRCS})
-target_link_directories(run_tests PRIVATE ${CUDA_LINK_DIRS})
-target_link_libraries(run_tests GTest::GTest GTest::Main ${EXE_LIBS})
-target_include_directories(run_tests PUBLIC ${EXE_INCLUDES})
-
-# Setting our output directory and C++ standard
-set_target_properties(
-  run_tests
-  PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/target/release/"
-             OUTPUT_NAME run_tests
-             CXX_STANDARD 20
-             CXX_STANDARD_REQUIRED ON
-             CXX_EXTENSIONS OFF)
+  # Setting our output directory and C++ standard
+  set_target_properties(
+    run_tests
+    PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/target/release/"
+               OUTPUT_NAME run_tests
+               CXX_STANDARD 20
+               CXX_STANDARD_REQUIRED ON
+               CXX_EXTENSIONS OFF)
+endif()

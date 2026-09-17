@@ -9,9 +9,30 @@ GR00T-WholeBodyControl / GEAR-SONIC                          Apache License 2.0
 NVIDIA Corporation
 https://github.com/NVIDIA/GR00T-WholeBodyControl
 
-  runner/          the C++ deployment runner (gear_sonic_deploy), unmodified
+  runner/          the C++ deployment runner (gear_sonic_deploy), with two
+                   documented changes -- the only two: runner/ arrived in a
+                   single commit (`git log --oneline -- runner/` is a30501f),
+                   and `git diff --name-only a30501f -- runner/` names these two
+                   files and no others:
+                     deploy.sh -- a DO-NOT-RUN banner comment above `set -e`.
+                       Comment only, no code. Nothing in this bundle invokes
+                       upstream's launcher; run.sh is the entry point, and the
+                       banner says what running deploy.sh here would do instead.
+                     src/g1/g1_deploy_onnx_ref/CMakeLists.txt -- the googletest
+                       FetchContent download removed, and the run_tests target
+                       put behind -DG1_BUILD_TESTS=ON, off by default. The
+                       download ran at CONFIGURE time on the default build path,
+                       so the first `bash build.sh` on a deploy box with no
+                       route out failed mid-build; libgtest-dev, which setup.sh
+                       apt-installs, already satisfies the
+                       find_package(GTest REQUIRED) that follows. This one is a
+                       functional change, not a comment.
+                   Everything else under runner/, thirdparty/ included, is
+                   unmodified. One file present upstream is not redistributed:
+                   the proprietary arm64 .deb under runner/thirdparty/ -- see
+                   .gitignore:19-25.
   sim/gear_sonic_sim/  the MuJoCo/DDS simulator (gear_sonic/utils/mujoco_sim),
-                   with four documented changes -- see sim/VENDOR_PATCHES.md
+                   with six documented changes -- see sim/VENDOR_PATCHES.md
   sim/models/      the G1 MJCF model and meshes, unmodified
   sim/wbc_configs/ the whole-body-control config, ROBOT_SCENE repointed only
 
@@ -29,6 +50,18 @@ https://github.com/unitreerobotics/unitree_sdk2
   See runner/thirdparty/unitree_sdk2/LICENSE
 
 --------------------------------------------------------------------------------
+RapidJSON                                                          MIT License
+Copyright (C) 2015 THL A29 Limited, a Tencent company, and Milo Yip
+https://github.com/Tencent/rapidjson
+
+  Not a directory of its own: it is compiled INTO the prebuilt archive above,
+  which this repository tracks and ships. `strings` on
+  runner/thirdparty/unitree_sdk2/lib/x86_64/libunitree_sdk2.a returns 1138
+  mangled rapidjson symbols (_ZN9rapidjson12CrtAllocator6MallocEm and the rest),
+  so redistributing the archive redistributes RapidJSON.
+  See runner/thirdparty/unitree_sdk2/licenses/Tencent/rapidjson/LICENSE
+
+--------------------------------------------------------------------------------
 unitree_sdk2_python                                       BSD 3-Clause License
 Copyright (c) 2016-2023 HangZhou YuShu TECHNOLOGY CO.,LTD. ("Unitree Robotics")
 https://github.com/unitreerobotics/unitree_sdk2_python
@@ -43,7 +76,14 @@ https://github.com/eclipse-cyclonedds/cyclonedds
 
   runner/thirdparty/unitree_sdk2/thirdparty/   headers and shared libraries,
                                                version 0.10.2, unmodified
-  See runner/thirdparty/unitree_sdk2/licenses/eclipse-cyclonedds/
+  See runner/thirdparty/unitree_sdk2/licenses/ -- the whole directory, not just
+  eclipse-cyclonedds/. As vendored upstream it also carries eclipse-iceoryx/,
+  the license of the optional shared-memory transport Cyclone DDS can be built
+  against, and Tencent/rapidjson/ above. (The shipped libddsc.so names iceoryx
+  only in configuration and locator strings -- use_iceoryx, locator_is_iceoryx,
+  cost_redundant_iceoryx -- which is not evidence that iceoryx object code is
+  linked in. The license text is tracked here either way, so a redistributor
+  should see it.)
 
 --------------------------------------------------------------------------------
 Everything else in this repository -- the setup, build, test, evaluation and

@@ -1,4 +1,46 @@
 #!/bin/bash
+# ============================================================================
+# NOT THIS BUNDLE'S ENTRY POINT.  DO NOT RUN THIS FILE.
+# ============================================================================
+# This is upstream SONIC's own launcher, vendored with the rest of
+# gear_sonic_deploy under runner/ (see NOTICE). It is kept so runner/ stays
+# diffable against upstream, not because anything here calls it: nothing in this
+# bundle's scripts, tools or docs invokes it. The entry point is run.sh at the
+# top of the bundle, with drill.sh to rehearse the same sequence against the DDS
+# simulator first.
+#
+# What running this would do, on this bundle, today. Each step is named by a
+# string to grep for in this file rather than by a line number, because this
+# banner shifts every line under it (the grep also matches the banner itself):
+#
+#   INTERFACE_MODE="real"
+#                 it defaults to the robot, not sim.
+#   CHECKPOINT_DEFAULT=, PLANNER_DEFAULT=, MOTION_DATA_DEFAULT=
+#                 policy/release/model, planner/target_vel/V2/planner_sonic.onnx
+#                 and reference/example/. None of the three is here:
+#                 runner/policy/release/ holds four .yaml files and no
+#                 model_*.onnx, there is no runner/planner/ at all, and
+#                 runner/reference/ holds only convert_motions.py.
+#   "Some files are missing"
+#                 it prints that and CONTINUES anyway.
+#   ./scripts/install_deps.sh -- twice, once per dependency check
+#                 apt packages plus an onnxruntime download, a different
+#                 toolchain from the one setup.sh pins (TensorRT 10.13 exactly,
+#                 CUDA 12.9, and no onnxruntime outside
+#                 ~/opt/sonic-deploy-toolchain).
+#   source scripts/setup_env.sh, then just build
+#                 which configures into runner/build/ (.justfile:19-24) -- not
+#                 the .build/ tree build.sh uses. The binary it launches would
+#                 not be the binary this bundle was tested with.
+#   "Proceed with deployment? [Y/n]"
+#                 read on STDIN, and the test just under it -- -z "$confirm" --
+#                 treats an EMPTY line as yes. run.sh reads its own arming
+#                 answer from /dev/tty and defaults to no, precisely so that a
+#                 pipe or a stray newline cannot start a robot.
+#
+# Nothing on this path writes a run record. run.sh does, because the one hardware
+# run this bundle has had left no artifact at all -- docs/HARDWARE_RUNS.md.
+# ============================================================================
 set -e
 
 # ============================================================================

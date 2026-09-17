@@ -39,8 +39,18 @@
 #                               headers from crt/, which ship with the compiler
 #                               headers rather than the runtime. 82 kB.
 #   onnxruntime gpu_cuda12      Must match the CUDA line above.
-#   cppzmq vendored             Ubuntu 22.04 has no cppzmq-dev; zmq.hpp is a
-#                               single header. libzmq3-dev is the C library.
+#   cppzmq vendored             NOT because the distro lacks it. libzmq3-dev --
+#                               installed below -- does ship /usr/include/zmq.hpp
+#                               (`dpkg -S /usr/include/zmq.hpp`, jammy 4.3.4-2),
+#                               but that copy is cppzmq 4.8.1. The vendored
+#                               single header is 4.10.0, and env.sh's
+#                               CPLUS_INCLUDE_PATH export puts it ahead of
+#                               /usr/include, so any build with env.sh sourced
+#                               compiles against 4.10.0. That export is
+#                               conditional on the vendored header being
+#                               present, so a build without it falls back to the
+#                               distro's 4.8.1. libzmq3-dev is still what
+#                               provides the C library underneath.
 set -euo pipefail
 
 DRY=0; NO_SUDO=0
@@ -48,6 +58,21 @@ for a in "$@"; do case "$a" in
   --dry-run) DRY=1 ;; --no-sudo) NO_SUDO=1 ;;
   *) echo "unknown option: $a"; exit 2 ;;
 esac; done
+
+# Refuse `sudo bash setup.sh`. TC below is derived from $HOME, and under sudo
+# $HOME is root's: the entire no-sudo half (cmake, onnxruntime, zmq.hpp) lands
+# in /root/opt, while verify at the bottom resolves the INVOKING user's home
+# through SUDO_USER and reports zmq.hpp and onnxruntime MISSING -- correctly,
+# they are not in that user's home -- with nothing saying why. This script calls
+# sudo itself, per apt command; it must not be started under one.
+if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
+  echo "Do not run this under sudo: \$HOME would be /root, so cmake,"
+  echo "onnxruntime and zmq.hpp would install into /root/opt and the verify"
+  echo "step -- which looks in ${SUDO_USER}'s home -- would report them MISSING."
+  echo
+  echo "Run:  bash setup.sh      It asks for sudo itself, for the apt steps."
+  exit 2
+fi
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TC="$HOME/opt/sonic-deploy-toolchain"
@@ -62,6 +87,16 @@ say() { echo; echo "== $* =="; }
 [ "$(uname -m)" = "x86_64" ] || {
   echo "This bundle's setup targets x86_64 Ubuntu. On a Jetson (arm64) use"
   echo "runner/scripts/install_deps.sh, which handles the arm64 packages."; exit 1; }
+
+# Step 1 below downloads four things with curl (just, cmake, onnxruntime,
+# zmq.hpp) BEFORE step 2 apt-installs curl and ca-certificates. On a minimal
+# image -- a docker base, a cloud image -- curl is absent and `set -e` kills the
+# script at the first download with a bare "curl: command not found". Installing
+# curl up here instead is not an option: --no-sudo is defined by reaching no
+# sudo call at all, so the guard has to refuse rather than fix.
+command -v curl >/dev/null || {
+  echo "curl is missing, and setup.sh downloads four things before apt runs."
+  echo "Install it first:  sudo apt-get install -y curl ca-certificates"; exit 1; }
 
 # ---------------------------------------------------------------- no sudo --
 say "1/5  just, cmake, onnxruntime, cppzmq  (no sudo, all under \$HOME)"
@@ -104,10 +139,18 @@ fi
 # ------------------------------------------------------------------ sudo --
 say "2/5  build tools and C++ libraries"
 run sudo apt-get update
+# ffmpeg is here for the recorders, not for the runner: sim/run_robot_sim.py
+# --record pipes raw RGB frames straight into ffmpeg's stdin, and tools/ shells
+# out to it for the demo video and the MuJoCo story clips. run_robot_sim.py and
+# build_demo_video.py test shutil.which("ffmpeg") up front and fail before doing
+# any work; mujoco_story.py's ff() has no such guard and would raise
+# FileNotFoundError partway through a render. Either way this is the step that
+# should have put ffmpeg on the box.
 run sudo apt-get install -y \
   clang build-essential pkg-config patchelf zlib1g-dev libgtest-dev \
   git git-lfs curl wget ca-certificates \
   libmsgpack-dev libzmq3-dev libeigen3-dev nlohmann-json3-dev \
+  ffmpeg \
   python3-venv python3-pip
 
 say "2b/5  python environment for tools/ and test.sh"
@@ -119,17 +162,38 @@ say "2b/5  python environment for tools/ and test.sh"
 # onnxruntime CPU is enough here: the tools verify and convert, while the GPU
 # inference is the C++ runner's job through TensorRT.
 VENV="$HERE/.venv"
-if [ ! -x "$VENV/bin/python" ] && [ "$DRY" -eq 0 ]; then
+# The rebuild is gated on the IMPORTS working, not on bin/python existing.
+# `python3 -m venv` writes bin/python before pip runs, so a failed pip install
+# leaves a venv that looks installed; the old `[ ! -x "$VENV/bin/python" ]` guard
+# was then false on every later run, the rm -rf was never reached, and the remedy
+# this script printed -- re-run setup.sh -- took the skip branch and could never
+# repair it. verify below runs the same import, so a venv that exists but cannot
+# import no longer reaches "Toolchain ready". The cost of gating on the import is
+# that a venv failing it for an environmental reason -- a system library missing
+# under mujoco, say -- is now torn down and reinstalled on every later run and
+# still fails; the pip output and the import error are the thing to read, not a
+# re-run.
+VENV_IMPORTS='import numpy, onnxruntime, yaml, joblib, scipy, mujoco'
+venv_ok() { [ -x "$VENV/bin/python" ] && "$VENV/bin/python" -c "$VENV_IMPORTS" >/dev/null 2>&1; }
+if [ "$DRY" -eq 0 ] && ! venv_ok; then
   rm -rf "$VENV"
   python3 -m venv "$VENV"
   "$VENV/bin/pip" -q install --upgrade pip
   "$VENV/bin/pip" -q install numpy onnxruntime pyyaml joblib scipy mujoco
 fi
-if [ -x "$VENV/bin/python" ] && [ "$DRY" -eq 0 ]; then
-  "$VENV/bin/python" - <<'PYCHK' || echo "  (some packages missing; re-run setup.sh)"
-import numpy, onnxruntime, yaml, joblib, scipy, mujoco
+if [ "$DRY" -eq 0 ]; then
+  if venv_ok; then
+    "$VENV/bin/python" - <<'PYCHK'
+import numpy, onnxruntime, mujoco
 print(f"  numpy {numpy.__version__} · onnxruntime {onnxruntime.__version__} · mujoco {mujoco.__version__}")
 PYCHK
+  else
+    echo "  ⚠ .venv cannot import numpy/onnxruntime/yaml/joblib/scipy/mujoco even"
+    echo "    after a fresh create+install. pip itself succeeded -- set -e would have"
+    echo "    stopped the script otherwise -- so this is an import-time failure, not a"
+    echo "    download one, and re-running setup.sh will reproduce it. See it with:"
+    echo "      .venv/bin/python -c 'import numpy, onnxruntime, yaml, joblib, scipy, mujoco'"
+  fi
 fi
 
 say "2c/5  Unitree SDK and the DDS robot simulator"
@@ -160,7 +224,19 @@ if [ "$DRY" -eq 0 ] && [ -f "$TP/lib/$ARCH_DIR/libddsc.so" ]; then
   echo "  CycloneDDS   $CDDS  (from the vendored unitree_sdk2, $ARCH_DIR)"
 fi
 VENVSIM="$HERE/.venv-sim"
-if [ ! -x "$VENVSIM/bin/python" ] && [ "$DRY" -eq 0 ]; then
+# Gated on the imports for the same reason as .venv above, and the need is worse
+# here: the cyclonedds install below ends in `|| echo`, which swallows the
+# failure under set -e. A failed build therefore left a .venv-sim that existed,
+# failed its import check, and -- because the guard was `[ ! -x bin/python ]` --
+# was never rebuilt on any later run, while the message below said drill.sh will
+# not run and offered no way out.
+SIM_IMPORTS='import mujoco
+from cyclonedds.domain import DomainParticipant
+from unitree_sdk2py.core.channel import ChannelFactory
+from gear_sonic_sim.simulator_factory import SimulatorFactory'
+venvsim_ok() { [ -x "$VENVSIM/bin/python" ] \
+  && PYTHONPATH="$HERE/sim:$HERE/sdk" "$VENVSIM/bin/python" -c "$SIM_IMPORTS" >/dev/null 2>&1; }
+if [ "$DRY" -eq 0 ] && ! venvsim_ok; then
   SIMPY3=$(command -v python3.10 || command -v python3.11 || command -v python3.12 || true)
   if [ -z "$SIMPY3" ]; then
     echo "  ⚠ no python3.10/3.11/3.12 found; the DDS simulator will not be available."
@@ -174,15 +250,17 @@ if [ ! -x "$VENVSIM/bin/python" ] && [ "$DRY" -eq 0 ]; then
     "$VENVSIM/bin/pip" -q install mujoco numpy scipy pyyaml
   fi
 fi
-if [ -x "$VENVSIM/bin/python" ] && [ "$DRY" -eq 0 ]; then
-  PYTHONPATH="$HERE/sim:$HERE/sdk" "$VENVSIM/bin/python" - <<'PYCHK' \
-      || echo "  ⚠ the DDS simulator is not importable; drill.sh will not run"
+if [ "$DRY" -eq 0 ] && [ -x "$VENVSIM/bin/python" ]; then
+  if venvsim_ok; then
+    PYTHONPATH="$HERE/sim:$HERE/sdk" "$VENVSIM/bin/python" - <<'PYCHK'
 import mujoco
-from cyclonedds.domain import DomainParticipant  # noqa: F401
-from unitree_sdk2py.core.channel import ChannelFactory  # noqa: F401
-from gear_sonic_sim.simulator_factory import SimulatorFactory  # noqa: F401
 print(f"  sim venv     python OK, mujoco {mujoco.__version__}, cyclonedds 0.10.2, unitree_sdk2py")
 PYCHK
+  else
+    echo "  ⚠ the DDS simulator is not importable; drill.sh will not run."
+    echo "    Re-running setup.sh now deletes .venv-sim and rebuilds it. cyclonedds"
+    echo "    0.10.2 builds against CYCLONEDDS_HOME=$CDDS and needs python3.10-3.12."
+  fi
 fi
 
 say "3/5  NVIDIA CUDA apt repository"
@@ -216,26 +294,41 @@ run sudo apt-get install -y --allow-downgrades \
 # version change the cached engines beside the policies are stale: TensorRT will
 # refuse to deserialize them, and the failure surfaces at robot-startup time,
 # which is the worst possible moment. Drop them here so the next run rebuilds.
-if [ "$DRY" -eq 0 ] && ls "$HERE"/policies/*.trt >/dev/null 2>&1; then
-  if [ -f /usr/include/x86_64-linux-gnu/NvInferVersion.h ]; then
-    _trt_now=$(grep -E 'define TRT_(MAJOR|MINOR)_ENTERPRISE' \
-      /usr/include/x86_64-linux-gnu/NvInferVersion.h | awk '{printf "%s.", $3}' | sed 's/\.$//')
-    _stamp="$HERE/policies/.trt_built_with"
-    if [ ! -f "$_stamp" ] || [ "$(cat "$_stamp")" != "$_trt_now" ]; then
-      echo
-      echo "  TensorRT is now $_trt_now; removing engines cached under a different version:"
-      for e in "$HERE"/policies/*.trt; do echo "    $(basename "$e")"; rm -f "$e"; done
-      echo "$_trt_now" > "$_stamp"
-    fi
+#
+# The stamp is written whether or not an engine exists. It used to be written
+# only inside the "engines are stale" branch, which on a fresh machine never runs
+# -- setup.sh installs TensorRT before the first engine is ever built -- and
+# .gitignore:10 keeps the file out of the clone, so setup.sh is its only possible
+# writer. The stamp was therefore permanently absent on a new box, so the
+# `# tensorrt` line run.sh writes into every run_info.txt -- `cat
+# policies/.trt_built_with ... || echo unknown` -- read `unknown` for exactly the
+# machine a future operator would be deploying from. Writing the stamp
+# unconditionally stays honest: any engine built later is built by the TensorRT
+# recorded here, and if TensorRT changes, the branch below deletes the engines
+# that no longer match it.
+if [ "$DRY" -eq 0 ] && [ -f /usr/include/x86_64-linux-gnu/NvInferVersion.h ]; then
+  _trt_now=$(grep -E 'define TRT_(MAJOR|MINOR)_ENTERPRISE' \
+    /usr/include/x86_64-linux-gnu/NvInferVersion.h | awk '{printf "%s.", $3}' | sed 's/\.$//')
+  _stamp="$HERE/policies/.trt_built_with"
+  if ls "$HERE"/policies/*.trt >/dev/null 2>&1 \
+     && { [ ! -f "$_stamp" ] || [ "$(cat "$_stamp")" != "$_trt_now" ]; }; then
+    echo
+    echo "  TensorRT is now $_trt_now; removing engines cached under a different version:"
+    for e in "$HERE"/policies/*.trt; do echo "    $(basename "$e")"; rm -f "$e"; done
   fi
+  echo "$_trt_now" > "$_stamp"
 fi
 
 [ "$DRY" -eq 1 ] && { echo; echo "dry run only."; exit 0; }
 
 # ---------------------------------------------------------------- verify --
 say "verify"
-# Resolve the invoking user's home: under `sudo bash setup.sh` $HOME is root's
-# and the no-sudo half would look missing when it is installed.
+# Resolve the invoking user's home, because the no-sudo half installs under
+# $HOME. The `sudo bash setup.sh` case this used to compensate for is refused
+# outright at the top of the script now: under sudo the files land in /root/opt,
+# so they really are absent from the user's home, and looking them up elsewhere
+# would have reported OK over a toolchain installed where nothing else can find
+# it. What remains here covers a SUDO_USER exported by an earlier sudo shell.
 _home="$HOME"
 [ -n "${SUDO_USER:-}" ] && _home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
 export PATH="$_home/.local/bin:$PATH"
@@ -244,6 +337,7 @@ chk() { printf "  %-24s " "$1"; shift; if "$@" >/dev/null 2>&1; then echo OK; el
 chk just             command -v just
 chk cmake            command -v cmake
 chk clang            command -v clang
+chk ffmpeg           command -v ffmpeg
 chk cuda_runtime.h   bash -c 'ls /usr/local/cuda-12.9/include/cuda_runtime.h'
 chk crt/host_defines bash -c 'ls /usr/local/cuda-12.9/targets/*/include/crt/host_defines.h'
 chk NvInfer.h        test -f /usr/include/x86_64-linux-gnu/NvInfer.h
@@ -252,8 +346,12 @@ chk zmq.h            test -f /usr/include/zmq.h
 chk zmq.hpp          test -f "$_home/opt/sonic-deploy-toolchain/include/zmq.hpp"
 chk Eigen            bash -c 'ls -d /usr/include/eigen3/Eigen'
 chk nlohmann/json    test -f /usr/include/nlohmann/json.hpp
-chk "python venv"      test -x "$HERE/.venv/bin/python"
-chk "sim venv"         test -x "$HERE/.venv-sim/bin/python"
+# These two run the imports rather than `test -x bin/python`: python3 -m venv
+# writes bin/python before pip runs, so existence proves nothing, and this is
+# what used to let "Toolchain ready" print over a venv that could not import
+# numpy (tools/, test.sh) or cyclonedds (drill.sh, run.sh's rehearsal).
+chk "python venv"      venv_ok
+chk "sim venv"         venvsim_ok
 chk "unitree_sdk2py"   test -d "$HERE/sdk/unitree_sdk2py"
 chk "DDS sim"          test -f "$HERE/sim/run_robot_sim.py"
 chk onnxruntime      bash -c "ls -d $_home/opt/sonic-deploy-toolchain/onnxruntime-linux-x64-gpu_cuda12-*/lib/cmake/onnxruntime"
@@ -272,6 +370,27 @@ if [ -f /usr/include/x86_64-linux-gnu/NvInferVersion.h ]; then
        echo "    Re-run:  TRT_VERSION=$TRT_VERSION bash $0"
        ok=0 ;;
   esac
+fi
+
+# /usr/local/cuda is an update-alternatives symlink, and a CUDA 13 toolkit
+# installed beside 12.9 normally owns it (on this box: priority 131 vs 129,
+# link -> /usr/local/cuda-13.1). That matters because find_package(CUDAToolkit
+# 10.2 QUIET) at runner/CMakeLists.txt:42 locates the toolkit through nvcc, and
+# step 4/5 above installs only the 12.9 runtime and crt headers -- no nvcc, by
+# design, since nothing here compiles .cu files. On a mixed box the search comes
+# up empty and runner/CMakeLists.txt:144-176 falls through to hardcoded
+# /usr/local/cuda paths: CUDA 13 libraries under a TensorRT built for 12.9.
+# A warning, not a failure -- this cannot tell whether the binary is actually
+# wrong, and the ldd check below can.
+if [ -e /usr/local/cuda ]; then
+  _cudalink=$(readlink -f /usr/local/cuda)
+  if [ "$_cudalink" != /usr/local/cuda-12.9 ]; then
+    echo "  ⚠ /usr/local/cuda -> $_cudalink, not /usr/local/cuda-12.9."
+    echo "    The runner's CMake fallback hardcodes /usr/local/cuda, so the build can"
+    echo "    link against that toolkit instead. Install cuda-nvcc-12-9 as well, then"
+    echo "    confirm after building with:"
+    echo "      ldd runner/target/release/g1_deploy_onnx_ref | grep cudart   # must say .so.12"
+  fi
 fi
 
 echo
