@@ -9,4 +9,15 @@
 #
 # Everything is a plain git object. `git clone` is enough. The two 55 MB ONNX
 # files draw a GitHub size warning; that is the intended trade.
-* -filter -diff -merge
+#
+# `-filter` is the whole no-LFS lever, and it is the only attribute set here.
+# This line used to read `* -filter -diff -merge`, which also turned off diffing
+# and three-way merging for every path in the tree. The cost was not theoretical:
+# every commit in this history renders as "Binary files a/x and b/x differ" with
+# no hunks and no insertion count, so no change to a shell script or a document
+# could be reviewed from the log, and any branch that touched the same text file
+# as another had to be resolved by hand. Neither was ever the point -- LFS routing
+# is `filter`, and git's own NUL-byte detection already treats the .onnx, .a,
+# .so, .mp4 and .pkl payloads as binary for diff and merge without being told.
+# Leave diff and merge to that detection; do not re-broaden this line.
+* -filter
