@@ -15,8 +15,8 @@
     }
   },
   "config_sha256": {
-    "deploy_metadata.json": "54a3aed6929c86b9028e61a1c367bfd144628bca73d0788f72d5c5558ed15e17",
-    "observation_config_lucid_g1_1570.yaml": "03ef63703257c83d81b690a8f931710e1f9195a704e87c5a864430de0ea62dc8"
+    "deploy_metadata.json": "34169d20c2e85e3574616be160a853ffc2eb9e3888f4069cf3c934cf46b8c4f3",
+    "observation_config_lucid_g1_1570.yaml": "8ec87088eafcafe40406f8d9ce1da886122c5e2ba5fe4bb8e610e0d5b1e86004"
   },
   "motions": {
     "crouch_idle_004__A246": 406,
@@ -28,7 +28,7 @@
     "the runner's printed observation layout matches the expected 1570-term order",
     "golden parity traces reproduce from the shipped ONNX with max |delta| 0.0",
     "motion CSVs parse under the runner's own ReadMetadata/ReadCSV/ReadCSV3D rules",
-    "the DDS simulator publishes rt/lowstate and holds the standing pose with no controller (test.sh 7/7)",
+    "the DDS simulator publishes rt/lowstate and holds the standing pose with no controller (test.sh check 7 of 8)",
     "the TensorRT 10.13 engine reproduces the shipped ONNX to mean 1.45e-06 on the runner's own observations (499 ticks, FP32)",
     "the runner builds against and links libnvinfer.so.10.13.3",
     "the runner drives a MuJoCo G1 over DDS through init -> fixed stand -> policy -> emergency stop, for BOTH policies (drill.sh)",
@@ -43,7 +43,7 @@
     "that the fixed stand holds a real G1 UNSUPPORTED; the one hardware run was in a gantry harness, and in simulation it does not hold",
     "that a policy survives the step at ']' on hardware; in simulation it does not"
   ],
-  "updated": "2026-09-09",
+  "updated": "2026-09-16",
   "tensorrt": {
     "required_x86_64": "10.13",
     "required_jetson_orin": "10.7",

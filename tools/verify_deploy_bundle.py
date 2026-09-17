@@ -28,6 +28,7 @@ in the bundle, and that the numbers mean what the runner thinks they mean.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -345,6 +346,54 @@ def check_joint_order_tables(bundle: Path, report: dict, problems: list[str]) ->
     report["joint_order_tables"] = "checked against policy_parameters.hpp" if seen else "skipped"
 
 
+def check_manifest(bundle: Path, report: dict, problems: list[str]) -> None:
+    """MANIFEST.json is the bundle's integrity receipt. Check it against disk.
+
+    Nothing read it. The hash it published for config/deploy_metadata.json had
+    been wrong since d49ba85 rewrote that file (4566 -> 6653 bytes) without
+    touching the manifest, and the error was invisible for exactly as long as
+    nobody compared the two -- which, for a receipt, is the whole failure mode.
+    A receipt that is never checked is a claim, and this bundle's premise is
+    that claims get turned into measurements.
+    """
+    man = bundle / "MANIFEST.json"
+    if not man.is_file():
+        problems.append("no MANIFEST.json")
+        return
+    d = json.loads(man.read_text())
+    checked = 0
+    for name, want in (d.get("config_sha256") or {}).items():
+        f = bundle / "config" / name
+        if not f.is_file():
+            problems.append(f"MANIFEST.json names config/{name}, which is not in the bundle")
+            continue
+        got = hashlib.sha256(f.read_bytes()).hexdigest()
+        checked += 1
+        if got != want:
+            problems.append(
+                f"MANIFEST.json config_sha256[{name}] is {want[:16]}..., file on disk is "
+                f"{got[:16]}... -- the manifest was not updated with the file"
+            )
+    for name, meta in (d.get("policies") or {}).items():
+        f = bundle / "policies" / name
+        if not f.is_file():
+            problems.append(f"MANIFEST.json names policies/{name}, which is not in the bundle")
+            continue
+        raw = f.read_bytes()
+        checked += 1
+        if "bytes" in meta and len(raw) != meta["bytes"]:
+            problems.append(
+                f"MANIFEST.json policies[{name}].bytes is {meta['bytes']}, file is {len(raw)}"
+            )
+        got = hashlib.sha256(raw).hexdigest()
+        if "sha256" in meta and got != meta["sha256"]:
+            problems.append(
+                f"MANIFEST.json policies[{name}].sha256 is {meta['sha256'][:16]}..., "
+                f"file on disk is {got[:16]}..."
+            )
+    report["manifest_entries_checked"] = checked
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -436,6 +485,7 @@ def main(argv=None) -> int:
 
     check_joint_order(a.bundle, report, problems)
     check_joint_order_tables(a.bundle, report, problems)
+    check_manifest(a.bundle, report, problems)
 
     # --- parity vectors -----------------------------------------------------
     par = a.bundle / "parity"
@@ -492,6 +542,8 @@ def main(argv=None) -> int:
             print(f"  joints  {j['arm']:12s} {j['clip']:44s} {verdict}")
         if report.get("joint_order_tables"):
             print(f"  tables  deploy_metadata.json {report['joint_order_tables']}")
+        if report.get("manifest_entries_checked") is not None:
+            print(f"  receipt MANIFEST.json {report['manifest_entries_checked']} hashes checked against disk")
         if problems:
             print("\nPROBLEMS:")
             for p in problems:
