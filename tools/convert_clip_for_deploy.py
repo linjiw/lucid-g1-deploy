@@ -28,7 +28,8 @@ column.
 WHAT THIS DOES NOT DO
 ---------------------
 It does not verify that the runner's C++ reader parses these files into the
-same numbers. Nothing here has been on a robot. See the bundle README.
+same numbers. No policy in this bundle has ever been armed on a robot. See the
+bundle README and docs/HARDWARE_RUNS.md.
 """
 
 from __future__ import annotations

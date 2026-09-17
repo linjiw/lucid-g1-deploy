@@ -8,7 +8,7 @@ WHY THIS EXISTS
 ---------------
 Dimensional agreement between the training-side observation and the C++
 runner's observation is checkable statically -- see
-``scripts/practice_utility/validate_deploy_obs_config.py``. VALUE agreement is
+``tools/validate_deploy_obs_config.py``. VALUE agreement is
 not. Nothing in this repository can currently tell a correct deployment from
 one where a term is transposed, a history buffer runs newest-first, a
 quaternion convention is flipped, or joint values arrive in MuJoCo order where

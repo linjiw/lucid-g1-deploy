@@ -98,7 +98,7 @@ answers whether the robot stays on its feet.
 
 1. **Validate the observation config against the runner you are about to build.**
    ```bash
-   python scripts/practice_utility/validate_deploy_obs_config.py \
+   python tools/validate_deploy_obs_config.py \
      config/observation_config_lucid_g1_1570.yaml \
      --expect-dim 1570 --expect-layout fused_g1_1570
    ```
@@ -109,14 +109,13 @@ answers whether the robot stays on its feet.
    in the wrong slots. Term order is assigned by file order, so a reordering
    does not fail — it silently feeds the policy shuffled input.
 
-2. **Run the value-level parity test.** `parity/` holds golden
-   `(observation, action)` pairs from the reference implementation. Point the
-   runner's `--policy-input-logfile` at the same clip and compare:
-   ```bash
-   python tools/emit_parity_vectors.py --out parity/deploy_dr --compare <runner.log>
-   ```
-   Dimensional agreement is verified. **Numerical agreement is not**, and only
-   this test can establish it.
+2. **The value-level parity test has been run, and it passes.** `parity/` holds
+   the golden `(observation, action)` pairs it uses. At the pinned TensorRT
+   10.13, FP32, 499 control ticks, `deploy_dr` agrees with its own TensorRT
+   engine to **mean |delta| 1.45e-06**. Reproduce with `bash drill.sh --parity`.
+   That figure is a property of *that* network, not a pass mark: `no_dr`'s own
+   correct baseline is **mean 6.88e-05**. Take a policy's own baseline before
+   comparing anything to it. See `tools/check_runtime_parity.py`.
 
 3. Convert any further clips with `tools/convert_clip_for_deploy.py`. The
    vendored `convert_motions.py` cannot read LUCID clips — it wants a
@@ -125,12 +124,11 @@ answers whether the robot stays on its feet.
 
 ## Limits — read before hardware
 
-1. **The C++ runner has never been built or run in this repository.** No
-   `build/`, no `CMakeCache.txt`, no logs. Everything stated about its
-   behaviour is read from source.
-2. **No policy here has ever run on a robot**, and no ONNX-versus-Isaac value
-   parity test has ever been executed. That is what `parity/` is for.
-3. **The policy cannot see its own horizontal position.** The observation
+1. **No policy here has ever run on a robot.** The bundle has been on a G1 once
+   — `INIT` and the fixed stand, in a gantry harness, 2026-09-11 — and `]` was
+   never pressed. Every behavioural number in this file is simulation. See
+   `HARDWARE_RUNS.md`.
+2. **The policy cannot see its own horizontal position.** The observation
    contains joint angles, velocities, IMU angular velocity, projected gravity,
    past actions, and the reference motion — and *no* term for where the robot
    is relative to the path. The repaired input that would supply it is a
@@ -138,22 +136,22 @@ answers whether the robot stays on its feet.
    unavailable on a real G1. **This, not randomization, is why both policies
    leave the path.** Deploying either without an external position source means
    accepting open-loop drift of the kind the table above measures.
-4. **No recovery guarantee.** No band, dwell or horizon has been frozen in this
+3. **No recovery guarantee.** No band, dwell or horizon has been frozen in this
    project, so no policy has passed or failed a recovery test. "Fell 0/16" is a
    MuJoCo measurement on one clip, not a safety property.
-5. **The pushes are simulator velocity increments**, in m/s written into state.
+4. **The pushes are simulator velocity increments**, in m/s written into state.
    They name no impulse in newton-seconds — no mass, no duration, no contact
    point — so they cannot be compared to a physical shove without a conversion
    nobody here has made.
-6. **One training seed.** The measured between-seed effect on absolute
+5. **One training seed.** The measured between-seed effect on absolute
    capability in this project is 7.8 points, so the DR-vs-no-DR contrast is
    descriptive. It is not licensed as "DR is better" until it replicates on
    seeds 8601 and 8602.
-7. **Safety hardware does not exist here.** The runner's stop path is a software
+6. **Safety hardware does not exist here.** The runner's stop path is a software
    boolean plus a joint-velocity abort and a motor-temperature cutoff. There is
    no hardwired e-stop hook, no fall-arrest rig and no fallback controller.
    Provide all three independently of this software. For a humanoid, cutting
    power is itself a hazard — the robot falls.
-8. The MuJoCo XML re-clamps hip pitch and roll to ±88 N·m while training gave
+7. The MuJoCo XML re-clamps hip pitch and roll to ±88 N·m while training gave
    those joints 139 N·m, so the sim2sim numbers above are from a robot running
    four leg joints at 63% of the training torque ceiling.

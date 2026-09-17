@@ -35,11 +35,12 @@
     "losing LowState mid-policy triggers CheckSafety -> damping stop (verified by killing the simulator mid-run)",
     "a wrong-total observation config aborts before anything moves; a reordered one is caught by test.sh check 2",
     "the TensorRT engine cache is keyed on the ONNX sha256, so swapping a policy under the same filename forces a rebuild",
-    "run.sh refuses to arm a robot when the safety prompt cannot be answered by a person"
+    "run.sh refuses to arm a robot when the safety prompt cannot be answered by a person",
+    "the runner reaches Init Done and holds the fixed stand on a real G1 over DDS, in a gantry harness (run 001, 2026-09-11)"
   ],
   "not_verified": [
-    "anything about behaviour on real hardware -- nothing here has been on a robot",
-    "that the fixed stand holds a real G1 unsupported; in simulation it does not",
+    "anything about how a POLICY behaves on real hardware -- the one hardware run reached the fixed stand under a gantry and the policy was never armed; see docs/HARDWARE_RUNS.md",
+    "that the fixed stand holds a real G1 UNSUPPORTED; the one hardware run was in a gantry harness, and in simulation it does not hold",
     "that a policy survives the step at ']' on hardware; in simulation it does not"
   ],
   "updated": "2026-09-09",
@@ -110,5 +111,17 @@
     },
     "consequence": "evaluate.sh resets the robot ONTO the reference and reports 0/16 falls at lambda 0; drill.sh starts it in the runner's standing pose and it goes down within seconds. The drill is the one that resembles deployment.",
     "tool": "tools/check_motion_start.py, reported as test.sh check 8 (WARN)"
-  }
+  },
+  "hardware_runs": [
+    {
+      "id": "001",
+      "date": "2026-09-11",
+      "commit": "e784134",
+      "reached": "Init Done, fixed stand",
+      "policy_armed": false,
+      "robot_support": "overhead gantry harness",
+      "artifacts": "none -- run.sh wrote no files at the time; see commit 17491f9",
+      "record": "docs/HARDWARE_RUNS.md"
+    }
+  ]
 }

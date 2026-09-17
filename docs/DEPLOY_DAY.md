@@ -3,9 +3,11 @@
 The order to do things in, and what each step is actually worth. Written against
 this bundle, executed against the MuJoCo robot on the DDS bus.
 
-**Nothing in this bundle has ever been on a robot.** Every number below is
-simulation. This procedure cannot make a first hardware run safe; it can only
-stop you from discovering a software problem while the robot is powered.
+**This bundle has been on a G1 once — `INIT` and the fixed stand, in a gantry
+harness, on 2026-09-11 — and the policy was never armed.** Every number below is
+simulation. `docs/HARDWARE_RUNS.md` records that run and what it established.
+This procedure cannot make an armed hardware run safe; it can only stop you from
+discovering a software problem while the robot is powered.
 
 A tick-through version of this page, for use in the lab, is published at
 <https://claude.ai/code/artifact/0775dd15-78a8-4b64-bcaa-f78f4f1f411a>
@@ -171,7 +173,7 @@ The first run with the robot powered should never reach the policy.
 **3.1 Launch, with the clip pinned.** **[rehearsed]**
 
 ```bash
-bash run.sh --policy deploy_dr --iface enp3s0 --motion walk_arc_cw_stop_001__A047
+bash run.sh --policy deploy_dr --iface enp130s0 --motion walk_arc_cw_stop_001__A047
 ```
 
 **Always pass `--motion`.** Which clip is motion index 0 is *not defined*:
@@ -242,7 +244,8 @@ Read that carefully before assuming it is benign. In MuJoCo the robot kept
 standing because the simulator applies the last LowCmd forever and the elastic
 band was on. A real G1's motor controller may have its own watchdog that does
 something different when commands stop arriving — this bundle cannot tell you
-which, and nothing here has been on a robot.
+which. The one hardware run to date never exercised it (see
+`HARDWARE_RUNS.md`).
 
 For a dry run on a supported robot, **`O` is the exit to use**: it is the one
 that leaves a defined command on the wire, and it is the one the runner actually
@@ -385,7 +388,9 @@ the first button press would be on the robot.
 
 ## What this procedure still does not establish
 
-1. Anything about behaviour on a robot. No hardware result of any kind exists.
+1. Anything about how a POLICY behaves on a robot. The one hardware run reached
+   the fixed stand under a gantry and stopped there; `]` was never pressed. See
+   `HARDWARE_RUNS.md`.
 2. That the fixed stand holds an unsupported G1. In simulation it does not.
 3. That a policy survives the step at `]`. In simulation it does not.
 4. That the wireless remote works — it cannot be rehearsed in this bundle.

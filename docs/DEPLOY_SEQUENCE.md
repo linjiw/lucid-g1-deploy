@@ -320,7 +320,9 @@ model. It says the stand is not statically stable at these gains in MuJoCo. It
 does not prove a real G1 falls over — the real machine has gearbox friction,
 series elasticity and a firmware-level current loop that MuJoCo does not model,
 any of which could hold it. Treat it as a reason to have the harness on, not as
-a measured fact about hardware. Nothing in this bundle has been on a robot.
+a measured fact about hardware. The one hardware run to date held the fixed
+stand *in a gantry harness*, so it says nothing either way about whether an
+unsupported G1 holds it — see `HARDWARE_RUNS.md`.
 
 ---
 

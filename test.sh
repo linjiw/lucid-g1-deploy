@@ -195,7 +195,9 @@ cat <<'EOF'
 
 Everything checked here passed. Note what is still NOT established:
 
-  * anything at all about behaviour on a robot. No hardware result exists.
+  * anything about how a policy behaves on a robot. This bundle has reached the
+    fixed stand on a real G1 once, in a gantry, with the policy never armed --
+    see docs/HARDWARE_RUNS.md. No policy has ever been armed on hardware.
   * that the fixed stand holds an unsupported G1. In simulation it does not --
     see docs/DEPLOY_SEQUENCE.md.
   * that a policy survives the step from default_angles onto its reference at

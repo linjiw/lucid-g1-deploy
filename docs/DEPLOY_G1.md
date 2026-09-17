@@ -8,8 +8,10 @@ TensorRT engine compiled from the policy, and its own printed observation layout
 matching the expected 1570 terms. See section 9 for exactly which claims that
 does and does not settle.
 
-What it is not: anything that has touched a robot. No hardware result of any
-kind exists in this project.
+What it is not: a result about policy behaviour on a robot. This bundle has been
+on a G1 once — `INIT` and the fixed stand, in a gantry, on 2026-09-11, with the
+policy never armed — and that run saved no data. `docs/HARDWARE_RUNS.md` is the
+log.
 
 Bundle: `$LUCID_ROOT/analysis/deploy_dr_ab_20260909/deploy_bundle`.
 
@@ -52,7 +54,7 @@ Use `config/observation_config_lucid_g1_1570.yaml`. Validate it against the
 runner you are about to build, every time:
 
 ```bash
-python scripts/practice_utility/validate_deploy_obs_config.py \
+python tools/validate_deploy_obs_config.py \
   config/observation_config_lucid_g1_1570.yaml \
   --expect-dim 1570 --expect-layout fused_g1_1570
 ```
@@ -270,7 +272,8 @@ Updated 2026-09-09, after building and running the runner on the x86 workstation
 | body index list | verified — independently derived, reproduces the repository's example bundle exactly |
 | joint order, kp/kd, default pose, action scale, control rate | verified — byte-identical between `robots/g1.py` and `policy_parameters.hpp` |
 | the runner reproduces the policy's actions | **NOT verified** — needs the `--policy-input-logfile` comparison against `parity/`, which requires a robot state source to drive the control loop |
-| behaviour on hardware | **NOT verified** — no hardware result of any kind exists in this project |
+| init + fixed stand on hardware | verified once — run 001, 2026-09-11, in a gantry harness; see `HARDWARE_RUNS.md` |
+| POLICY behaviour on hardware | **NOT verified** — `]` has never been pressed on a robot |
 
 ### What running it actually found
 

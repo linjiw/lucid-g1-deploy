@@ -313,7 +313,7 @@ def main() -> int:
              "     Ankle-pitch stiffness is 28.5 N.m/rad. Support the robot.\n"
              "  4  A hardwired e-stop, a harness or gantry, and a clear floor are\n"
              "     not in this software. Provide them.\n"
-             "  5  NOTHING HERE HAS BEEN ON A ROBOT. Every number is simulation.",
+             "  5  NO POLICY HAS EVER BEEN ARMED ON A ROBOT. Every number is simulation.",
              kicker="LIMITS", accent=WARN))
 
     add(card(tmp, (n := n + 1), 7.5,

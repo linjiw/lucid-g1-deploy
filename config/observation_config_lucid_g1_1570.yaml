@@ -16,7 +16,7 @@
 # Traced to tools/mujoco_player.py:build_obs -- the reference implementation
 # that reproduces the historical Isaac receipts in MuJoCo -- and cross-checked
 # term-by-term against the runner's registry with
-#   scripts/practice_utility/validate_deploy_obs_config.py \
+#   tools/validate_deploy_obs_config.py \
 #     <this file> --expect-dim 1570 --expect-layout fused_g1_1570
 #
 # NOT a substitute for a value-level parity test. Every name and width here is

@@ -33,8 +33,22 @@ import re
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
-RUNNER_SRC = REPO / "gear_sonic_deploy/src/g1/g1_deploy_onnx_ref/src/g1_deploy_onnx_ref.cpp"
+# The runner source ships inside this bundle at runner/src/; that is checked
+# FIRST, so the tool works on a machine that has never seen the training repo.
+# It previously resolved only parents[2]/gear_sonic_deploy/..., i.e. a sibling of
+# the bundle's own parent directory, so every documented invocation of this file
+# died with FileNotFoundError on a path outside the repository. The absolute path
+# is kept as the fallback for running this file in place inside the training
+# tree. Same shape as tools/mujoco_player.py:44-48.
+_BUNDLE_SRC = (
+    Path(__file__).resolve().parent.parent
+    / "runner/src/g1/g1_deploy_onnx_ref/src/g1_deploy_onnx_ref.cpp"
+)
+if _BUNDLE_SRC.is_file():
+    RUNNER_SRC = _BUNDLE_SRC
+else:
+    REPO = Path(__file__).resolve().parents[2]
+    RUNNER_SRC = REPO / "gear_sonic_deploy/src/g1/g1_deploy_onnx_ref/src/g1_deploy_onnx_ref.cpp"
 
 #: The fused-g1 export's layout, in the order the exporter concatenates it.
 #: Traced to tools/mujoco_player.py:build_obs, which is the reference

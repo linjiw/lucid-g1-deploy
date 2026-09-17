@@ -4,7 +4,11 @@ A self-contained bundle for running LUCID motion-tracking policies on a Unitree
 G1 through SONIC's C++ deployment runner. Copy the whole directory to another
 Ubuntu machine and follow the four steps below.
 
-Nothing here has been on a robot. Read **Limits** before you get near one.
+This bundle has been on a G1 once — `INIT` and the fixed stand, in a gantry
+harness, on 2026-09-11. The policy was never armed, and that run saved nothing.
+Every behavioural number here is still simulation. See
+[`docs/HARDWARE_RUNS.md`](docs/HARDWARE_RUNS.md), and read **Limits** before you
+get near a robot.
 
 **[Watch the 2½-minute guided demo →](docs/demo/lucid-g1-deploy-demo.mp4)** —
 what it is, how to install it, how the DDS interface works, and a real recording
@@ -170,9 +174,17 @@ across machines are expected (MuJoCo and onnxruntime versions differ); the
 
 ## Deploy on a real G1
 
-**Nothing in this bundle has been on a robot.** Every number in it is
-simulation. Read `docs/DEPLOY_SEQUENCE.md` and `docs/DEPLOY_G1.md` section 8
-before you start.
+**One hardware run has happened: `INIT` and the fixed stand, under a gantry, on
+2026-09-11. No policy has ever been armed on a robot.** Every behavioural number
+in this bundle is simulation. `docs/HARDWARE_RUNS.md` is the log of what has
+actually been on a G1 and what it established.
+
+Read, in this order: `docs/DEPLOY_SEQUENCE.md` for what the runner does between
+power-on and the policy, `docs/DEPLOY_G1.md` section 8 for the bundle-level
+preconditions, and `docs/DEPLOY_DAY.md` for the procedure to actually follow on
+the day — it is the newest and most complete of the three, and every step in it
+is marked with what it is worth. `docs/deploy-day-checklist.html` is the same
+procedure as a tick-through page for the lab.
 
 **1. Rehearse first, on the machine you will deploy from.** `bash test.sh` with
 no failures, then `bash drill.sh --play --parity`. If parity does not pass, stop
@@ -352,7 +364,7 @@ config; validate it with `tools/validate_deploy_obs_config.py` before building.
    still goes down within seconds in `drill.sh`. `bash test.sh` check 8 measures
    it; `tools/check_motion_start.py` explains the options.
 
-3. **The fixed stand does not hold a free-standing G1 in simulation.** Holding
+4. **The fixed stand does not hold a free-standing G1 in simulation.** Holding
    `default_angles` with the runner's own gains, unsupported, the robot sits down
    in about 1.4 s — the ankle-pitch stiffness (28.5 N·m/rad, derived from rotor
    inertia rather than from the balance moment) loses the battle and it pitches
@@ -360,21 +372,24 @@ config; validate it with `tools/validate_deploy_obs_config.py` before building.
    `ENABLE_ELASTIC_BAND: True` for this reason. Support the robot between
    `Init Done` and `]`. Measured in simulation only — see
    `docs/DEPLOY_SEQUENCE.md` for the trace and the caveat.
-4. **An emergency stop puts the robot on the floor.** `O` writes kp 0, kd 8,
+5. **An emergency stop puts the robot on the floor.** `O` writes kp 0, kd 8,
    tau 0 and joins the threads. It is terminal: `operator_state.stop` is never
    cleared and `program_state_` never moves backwards, so recovery to a stable
    stand means restarting the runner, with the robot supported.
-5. **No hardware result of any kind exists.** Every number here is simulation.
-6. **No calibrated recovery.** No band, dwell or horizon has ever been frozen in
+6. **No policy has ever been armed on a robot.** This bundle has been on a G1
+   once -- `INIT` and the fixed stand, in a gantry harness, on 2026-09-11 --
+   and `]` was never pressed. Every behavioural number here is simulation.
+   `docs/HARDWARE_RUNS.md` is the log of what has actually been on a robot.
+7. **No calibrated recovery.** No band, dwell or horizon has ever been frozen in
    this project, so no policy has passed or failed a recovery test. "0/16 falls"
    is a measurement on one clip, not a safety property.
-7. **The pushes are not physical.** Root velocity increments in m/s written into
+8. **The pushes are not physical.** Root velocity increments in m/s written into
    simulator state — no mass, no duration, no contact point. They name no
    impulse in newton-seconds.
-8. **One training seed.** The measured between-seed effect on absolute
+9. **One training seed.** The measured between-seed effect on absolute
    capability in this project is 7.8 points, so the comparison above is
    descriptive, not a general claim about randomization.
-9. **Safety hardware is not in this software.** The runner's stop path is a
+10. **Safety hardware is not in this software.** The runner's stop path is a
    software boolean plus a 35 rad/s joint-velocity abort and a motor-temperature
    cutoff. Provide a hardwired emergency stop, a fall-arrest harness or gantry,
    and a fallback controller independently. For a humanoid, cutting power is
