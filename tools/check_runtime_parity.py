@@ -24,7 +24,8 @@ scaling, no reordering, no inversion of anything.
 
 MEASURED RESULT
 ---------------
-On an RTX 5080, FP32 requested, 499 control ticks, at the two TensorRT versions:
+`deploy_dr`, on an RTX 5080, FP32 requested, 499 control ticks, at the two
+TensorRT versions:
 
                         TensorRT 10.16      TensorRT 10.13  (the pinned version)
     mean |delta|          1.10e-04            1.45e-06
@@ -32,15 +33,36 @@ On an RTX 5080, FP32 requested, 499 control ticks, at the two TensorRT versions:
     median per-tick max   --                  1.79e-06
     99th pct per-tick     --                  4.29e-06
 
-**The version pin is visible in the numbers.** At 10.16 the disagreement was
-systematic -- every tick, mean 1.1e-04. At the pinned 10.13 the mean drops 76x
-to 1.45e-06, which is ordinary FP32 agreement, and 498 of 499 ticks sit at
-~2e-06. This is worth knowing: SONIC's `danger` note about using the wrong
-TensorRT version is not hypothetical, and this is what it looks like from the
-outside.
+`no_dr`, the OTHER shipped policy, on the SAME correctly pinned 10.13.3, same
+GPU, same runner, through `drill.sh --play --parity`, 3 repeats, 648 ticks
+(measured in 1ccde55):
 
-The single remaining outlier (1 tick in 499, 2.37e-03) is a logging artefact,
-not an inference difference:
+                        no_dr               deploy_dr, same series
+    mean |delta|          6.88e-05            2.07e-06
+    median |delta|        5.71e-05            1.91e-06
+    max  |delta|          2.78e-04            6.9e-06
+    ticks > 1e-5          648 of 648          0 of 648
+
+**There is no universal pass mark here; a policy's baseline is its own.** no_dr's
+CORRECT reading, 2.78e-04, is the same order as the 1.10e-04 that a wrong
+TensorRT produced for deploy_dr, so the magnitude alone does not separate "wrong
+TensorRT" from "different network". Physically 2.78e-04 on the action is at most
+0.15 mrad (0.009 deg) of joint target: `g1_action_scale` in
+runner/src/g1/g1_deploy_onnx_ref/include/policy_parameters.hpp is
+`0.25 * effort_limit / stiffness`, whose LARGEST value across the 29 joints is
+0.55 rad per unit action (the 7520-14 hip-yaw and waist-yaw joints; the four
+4010 wrists are the smallest at 0.07), so the worst joint moves 1.5e-04 rad. It changes
+nothing. Take a policy's own first reading as its baseline and compare later
+runs against that; do not port deploy_dr's 1e-06 to a policy you just exported.
+
+What the version pin does look like: at 10.16 deploy_dr's disagreement was
+systematic -- every tick, mean 1.1e-04, 76x its own 1.45e-06 at the pinned 10.13,
+where 498 of 499 ticks sit at ~2e-06. It moved a policy off ITS OWN baseline.
+SONIC's `danger` note about using the wrong TensorRT version is not hypothetical;
+it is just not a threshold you can apply to a network you have never measured.
+
+Back to deploy_dr's 499-tick run at 10.13: its one outlier (1 tick, 2.37e-03) is
+a logging artefact, not an inference difference:
 
   * all 29 joints are off together, so it is not a torn CSV row;
   * the neighbouring ticks are clean at ~2e-06, so the two logs are not slipped;
@@ -66,11 +88,20 @@ default 6 significant digits. Replaying the observations with noise of exactly
 that size moves the actions by 3.6e-06 -- at 10.13 that is now the same order as
 the signal, so this test cannot resolve finer without raising the log precision.
 
+The verdict this tool prints is `--tol`, default 1e-2, set by TensorRT's default
+TF32 matmuls -- not by any figure above. Both shipped policies clear it with
+room to spare -- deploy_dr by three orders, no_dr's worst tick (2.78e-04) by a
+factor of 36 -- so a PASS here is not a claim that the engine matches some
+reference magnitude.
+
 A result MUCH larger than 1e-2 is a different problem: FP16 precision
 (`--policy-precision 16`), a TensorRT version that is not the pinned 10.13, or a
 policies/*.trt engine cached from a different ONNX file. `setup.sh` deletes
 cached engines when the TensorRT version changes, because a stale engine fails
 at robot-startup time.
+
+A result well inside 1e-2 but far from that policy's OWN recorded baseline is
+the case worth chasing, and the two baselines above are the recorded ones.
 """
 
 from __future__ import annotations

@@ -11,6 +11,29 @@ side by side per difficulty and the difficulties are cut in sequence.
 Every number on screen comes from the run that produced the tile; nothing
 is typed in by hand.
 
+DOES NOT RUN INSIDE THIS BUNDLE -- two things it needs were not shipped with it.
+Read from source, not executed:
+
+  * ``tools/stitch_dr_explainer.py``, imported in main() for ``ledger_success()``
+    (the Isaac 512-episode cross-reference in the grid headers). ``find . -name
+    'stitch*'`` over the worktree returns nothing. That import sits right after
+    parse_args, so EVERY invocation stops there -- including one that supplies
+    its own --arms-json -- before a single arm is resolved. The import is
+    wrapped below so it says that instead of raising a bare ModuleNotFoundError.
+  * the default --arms are four of the five historical training checkpoints in
+    ``mujoco_sweep.ARMS``, whose paths hang off mujoco_sweep's arms root ``A``
+    (``_B / "policies"`` when that directory exists, which here it does).
+    ``policies/`` in this bundle ships only deploy_dr_s8600_g1.onnx and
+    no_dr_s8600_g1.onnx, so none of the five ARMS paths resolves here.
+
+It is kept, rather than dropped, because it records exactly how the DR-comparison
+explainer grids were composed -- the arms, the lambda ladder, the per-tile
+numbers and the Isaac cross-reference in each header. No such grid ships in this
+bundle (`git ls-files docs` lists only the demo mp4), so this file is the recipe,
+not the output. To run it you need the training campaign's artifact tree AND
+stitch_dr_explainer.py from it; then pass --arms-json/--arm rather than relying
+on the defaults.
+
 usage: mujoco_story.py --out DIR --lams 0 1.0 1.5 [--seeds 8] [--arms ...]
 """
 
@@ -131,7 +154,7 @@ def grid(arm: str, lam: str, tiles: list[Path], results: list[dict], out: Path, 
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--lams", nargs="+", default=["0", "1", "1.5"])
     ap.add_argument("--seeds", type=int, default=8)
@@ -152,7 +175,19 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     a.out.mkdir(parents=True, exist_ok=True)
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from stitch_dr_explainer import ledger_success  # noqa: E402
+    try:
+        from stitch_dr_explainer import ledger_success  # noqa: E402
+    except ModuleNotFoundError as exc:
+        # Not shipped in this bundle -- see the note at the top of this file.
+        # Reported here rather than as a bare traceback, because it fires before
+        # anything else and is the first thing a reader hits.
+        raise SystemExit(
+            f"{exc}\n"
+            f"tools/stitch_dr_explainer.py is not part of lucid-g1-deploy. It "
+            f"supplies ledger_success(), the Isaac 512-episode number the grid "
+            f"headers cross-reference. Bring it over from the training campaign "
+            f"(along with the checkpoints the default --arms name) to run this."
+        ) from exc
 
     seeds = list(range(1, a.seeds + 1))
     # Resolve arms the same way mujoco_sweep does; --arms still selects from the

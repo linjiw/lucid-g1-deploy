@@ -10,7 +10,13 @@ cards are the measured ones. Regenerate the footage with
 then
 
     python3 tools/build_demo_video.py --footage results/demo/drill_raw.mp4 \\
-        --out results/demo/lucid-g1-deploy-demo.mp4
+        --out docs/demo/lucid-g1-deploy-demo.mp4
+
+--out is docs/demo/, not results/. docs/demo/lucid-g1-deploy-demo.mp4 is the
+tracked artefact README.md links from its first screen; results/ is gitignored
+(.gitignore:13), so writing the demo there regenerates nothing anyone else will
+ever see, and leaves the tracked copy stale. The raw footage above is an
+intermediate and does belong in results/.
 
 Only ffmpeg and a DejaVu font are needed -- no python video libraries. Text is
 passed through `drawtext=textfile=` rather than inline, so nothing has to be
@@ -191,21 +197,26 @@ def main() -> int:
              "  $ bash setup.sh        # a real terminal: sudo needs a tty\n"
              "  $ source env.sh        # every new shell\n"
              "  $ bash build.sh        # compiles the runner\n"
-             "  $ bash test.sh         # seven checks\n\n"
+             "  $ bash test.sh         # eight checks\n\n"
              "setup.sh pins TensorRT 10.13 -- the version SONIC requires on\n"
              "x86_64. It is a safety pin, not a preference. See the last card.",
              kicker="FOUR COMMANDS"))
 
     add(card(tmp, (n := n + 1), 10,
              "Verify, before anything moves",
-             "  == 1/7  bundle parses under the runner's own reading rules   PASS\n"
-             "  == 2/7  observation config accepted by the runner's parser   PASS\n"
-             "  == 3/7  ONNX policies load and are deterministic             PASS\n"
-             "  == 4/7  golden parity traces match their policies            PASS\n"
-             "  == 5/7  MuJoCo rollout with the reference controller         PASS\n"
-             "  == 6/7  C++ runner loads the bundle                          PASS\n"
-             "  == 7/7  DDS robot simulator comes up on the bus              PASS\n\n"
-             "  pass 7   fail 0   skip 0",
+             # The eight `hdr` lines of test.sh, in order, and its closing
+             # tally line. 8/8 is the one that WARNs on this bundle's clips
+             # (README.md's four-step block: "eight checks: seven pass, one
+             # warns"), so the card says warn 1, not a clean sweep.
+             "  == 1/8  bundle parses under the runner's own reading rules      PASS\n"
+             "  == 2/8  observation config accepted by the runner's parser      PASS\n"
+             "  == 3/8  ONNX policies load and are deterministic                PASS\n"
+             "  == 4/8  golden parity traces match their policies               PASS\n"
+             "  == 5/8  MuJoCo reference player runs end to end                 PASS\n"
+             "  == 6/8  C++ runner loads the bundle                             PASS\n"
+             "  == 7/8  DDS robot simulator comes up on the bus                 PASS\n"
+             "  == 8/8  reference motions start near the pose the runner holds  WARN\n\n"
+             "  pass 7   fail 0   warn 1   skip 0",
              kicker="bash test.sh"))
 
     add(card(tmp, (n := n + 1), 11,
@@ -222,8 +233,12 @@ def main() -> int:
 
     add(card(tmp, (n := n + 1), 9,
              "Rehearse the deployment",
-             "  $ python3 sim/run_robot_sim.py --iface lo     # the robot\n"
-             "  $ bash run.sh --policy deploy_dr --iface lo   # the controller\n\n"
+             # NOT python3: .venv has no cyclonedds, only .venv-sim does, and
+             # env.sh exports LUCID_SIM_PYTHON for exactly this. See the USAGE
+             # block in sim/run_robot_sim.py.
+             "  $ source env.sh\n"
+             "  $ \"$LUCID_SIM_PYTHON\" sim/run_robot_sim.py --iface lo   # the robot\n"
+             "  $ bash run.sh --policy deploy_dr --iface lo              # the controller\n\n"
              "or both at once, scripted end to end:\n\n"
              "  $ bash drill.sh\n\n"
              "What follows is a real recording of that command.",

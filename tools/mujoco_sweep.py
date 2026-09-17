@@ -11,11 +11,16 @@ sequence of physics draws and pushes. That makes per-seed comparison fair and
 lets a video later show the same draw side by side.
 
 Arms default to the five historical checkpoints below, so existing invocations
-and ``mujoco_story.py`` are unchanged. A NEW campaign supplies its own:
+and ``mujoco_story.py`` are unchanged. Those five paths do NOT resolve inside
+this bundle, and mujoco_story.py does not run here at all -- see its own header.
+A NEW campaign supplies its own:
 
     --arms-json  {"name": "/abs/path/model_step_008000_g1.onnx", ...}
     --arm        name=/abs/path.onnx            (repeatable)
-    --clip       the reference clip to track    (default: the hob002 testbed)
+    --clip       the reference clip to track    (default: the bundled
+                 clips/walk_arc_cw_stop_001__A047.pkl -- evaluate.sh:39 and
+                 README.md both name it as the clip every measured number is
+                 about)
 
 Each run records the sha256 of the ONNX that produced it. A cached result whose
 recorded hash differs from the file on disk is DISCARDED and recomputed: the
@@ -44,7 +49,12 @@ _B = Path(__file__).resolve().parent.parent
 PY = str(_B / ".venv/bin/python") if (_B / ".venv/bin/python").is_file() \
     else "/home/linjiw/isaaclab-install/env_isaaclab/bin/python"
 PLAYER = Path(__file__).resolve().parent / "mujoco_player.py"
-_bundled = sorted((_B / "clips").glob("*.pkl"))
+# Pick the published clip BY NAME. sorted(clips/*.pkl)[0] is
+# crouch_idle_004__A246.pkl, so a bare `mujoco_sweep.py --out ...` used to sweep a
+# clip no shipped table is about -- silently, because evaluate.sh:76 and :82
+# always pass --clip and so never exercised the default.
+_bundled = [p for p in [(_B / "clips" / "walk_arc_cw_stop_001__A047.pkl")] if p.is_file()] \
+    or sorted((_B / "clips").glob("*.pkl"))
 CLIP = str(_bundled[0]) if _bundled else \
     "/home/linjiw/lucid-sonic/pools/debug512/robot_filtered/walk_hands_on_back_loop_002__A066_M.pkl"
 A = _B / "policies" if (_B / "policies").is_dir() \
@@ -169,7 +179,7 @@ def one(
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--lams", type=float, nargs="+", default=[0, 0.5, 1.0, 1.5, 2.0])
     ap.add_argument("--seeds", type=int, default=32)
@@ -302,7 +312,26 @@ def main(argv=None) -> int:
         "| arm | " + " | ".join(f"λ {lam:g}" for lam in a.lams) + " |",
         "|---|" + "---|" * len(a.lams),
     ]
+    # The first table's heading has to follow the window, because the window
+    # changes what its `stop` cell MEANS. Without --full-clip the rollout breaks
+    # at the 0.5 m criterion (tools/mujoco_player.py, `if err > 0.5:` ... `if not
+    # full_clip: break`), so `stop` is when that fired. With --full-clip nothing
+    # breaks the loop and every rollout reaches the clip's end, so every failing
+    # cell reports the same number -- the motion length, not an event. Printing
+    # the scored heading over a full-clip table is how both
+    # docs/measured_*_sweep_fullclip.md came to be headed "Scored criterion"
+    # above cells that all read stop 8.6s; those two files say so and were
+    # corrected by hand. Take the length from the receipts rather than naming
+    # 8.6 s here, which is this clip's duration and not another's.
+    _durs = [r["duration"] for lams in table.values() for rs in lams.values()
+             for r in rs.values() if isinstance(r, dict) and r.get("duration")]
+    # "the {_motion} motion" -- the fallback has to read as an adjective, not a
+    # noun phrase, or an all-pre-duration cache prints "the the clip's motion".
+    _motion = f"{max(_durs):.1f} s" if _durs else "full"
     lines = [
+        f"### Full-clip window (rollout runs to the end of the {_motion} motion; "
+        f"pelvis-to-reference > 0.5 m still counts as a failure)"
+        if a.full_clip else
         "### Scored criterion (pelvis-to-reference > 0.5 m ends the rollout)",
         "",
         *head,

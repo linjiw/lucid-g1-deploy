@@ -24,12 +24,23 @@ in the LowCmd the runner actually sent:
 which is why an emergency stop is visible here: the runner's stop path writes
 kp = 0, kd = 8, q = 0, tau = 0, and this simulator applies exactly that.
 
-USAGE
+USAGE  -- after `source env.sh`, and NOT under `python3`:
 
-    python3 sim/run_robot_sim.py                 # loopback, viewer if there is a display
-    python3 sim/run_robot_sim.py --headless      # no viewer (servers, CI, this drill)
-    python3 sim/run_robot_sim.py --iface eth0    # a real NIC, to talk to another host
-    python3 sim/run_robot_sim.py --band          # elastic band: hold the robot up
+    "$LUCID_SIM_PYTHON" sim/run_robot_sim.py               # loopback, viewer if a display
+    "$LUCID_SIM_PYTHON" sim/run_robot_sim.py --headless    # no viewer (servers, CI, drill)
+    "$LUCID_SIM_PYTHON" sim/run_robot_sim.py --iface eth0  # a real NIC, to another host
+    "$LUCID_SIM_PYTHON" sim/run_robot_sim.py --band        # elastic band: hold the robot up
+
+`python3` is the wrong interpreter and fails before the model loads. env.sh puts
+.venv/bin first on PATH, and .venv carries no cyclonedds; only .venv-sim does
+(cyclonedds 0.10.2, which unitree_sdk2py pins and which does not import on 3.13
+-- checked: `ls .venv/lib/python3.10/site-packages | grep -i cyclone` is empty,
+.venv-sim has cyclonedds-0.10.2). The import chain here is run_robot_sim ->
+gear_sonic_sim.base_sim -> unitree_sdk2py.core.channel -> cyclonedds, so under
+.venv it raises ModuleNotFoundError. env.sh exports LUCID_SIM_PYTHON and the
+PYTHONPATH (sim/ and sdk/) that makes the vendored SDK and simulator importable
+at all. Every launcher in the bundle does the same -- drill.sh, run.sh and
+test.sh each set SIMPY to .venv-sim/bin/python.
 
 By default a fall RESETS the simulation, which is the vendor behaviour and is
 wrong for watching an emergency stop: the robot would snap back upright at the
@@ -42,7 +53,9 @@ start the runner against the same interface.
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
+import shutil
 import sys
 import time
 
@@ -138,8 +151,11 @@ def main() -> int:
     ap.add_argument("--duration", type=float, default=0.0,
                     help="stop after this many seconds (0 = run until interrupted)")
     ap.add_argument("--record", metavar="PATH",
-                    help="write an mp4 of the run. Renders offscreen through EGL, "
-                         "so it works with no display and alongside --headless.")
+                    help="write an mp4 of the run. With --headless it sets "
+                         "MUJOCO_GL=egl for itself and renders offscreen with no "
+                         "display; with the viewer on it makes its own offscreen "
+                         "context on the default GLFW backend, which needs a "
+                         "display. Needs ffmpeg on PATH.")
     ap.add_argument("--record-hz", type=float, default=30.0)
     ap.add_argument("--record-size", default="1280x720")
     ap.add_argument("--status-hz", type=float, default=1.0,
@@ -152,6 +168,39 @@ def main() -> int:
                     help="do NOT hold the robot upright before the first LowCmd; "
                          "let it collapse under zero torque (see --help notes)")
     args = ap.parse_args()
+
+    # Both guards run HERE, before the imports below: base_sim imports mujoco at
+    # module scope, and both failures are otherwise raised after the model is
+    # loaded and the DDS domain is taken -- i.e. with a robot already publishing
+    # on the bus.
+    #
+    # MUJOCO_GL is read exactly once, at `import mujoco`: mujoco/__init__.py:76
+    # pulls in rendering/classic/gl_context.py, which reads it at :24 and, when it
+    # is empty, runs the whole backend dispatch (:37-48) down to its final
+    # `else:` / `from mujoco.glfw import GLContext as _GLContext` (:46-48). There
+    # is no auto-fallback to EGL: the ONLY branch in that dispatch that reaches
+    # mujoco.egl is `_MUJOCO_GL == 'egl'` (:40-42), and an empty value falls to
+    # GLFW. So headless --record without this dies inside mujoco.Renderer with no
+    # display.
+    # Only when headless: forcing EGL with the viewer on would break
+    # mujoco.viewer.launch_passive (base_sim.py:216-232), which needs GLFW.
+    # setdefault, so an explicit MUJOCO_GL=osmesa from the caller still wins --
+    # tools/build_demo_video.py's recipe still sets it by hand ahead of drill.sh
+    # (`MUJOCO_GL=egl bash drill.sh --hold 14 --record ...`, its module docstring).
+    if args.record and args.headless:
+        os.environ.setdefault("MUJOCO_GL", "egl")
+    # _Recorder pipes raw frames into ffmpeg through an unguarded Popen in
+    # _Recorder.__init__, so a missing ffmpeg surfaces as a bare FileNotFoundError
+    # naming neither the binary's purpose nor how to get it. setup.sh does install
+    # it (an `ffmpeg` entry in the `sudo apt-get install -y` list of its
+    # build-tools step) and does report it (its `chk ffmpeg` line), so
+    # this guard only fires on a box where that step was skipped or refused --
+    # which is exactly when the bare traceback is least readable. Same check as
+    # tools/build_demo_video.py (`if not shutil.which("ffmpeg")`, in main() just
+    # after the font check); the message here adds the install hint.
+    if args.record and not shutil.which("ffmpeg"):
+        raise SystemExit("ffmpeg not found  (--record pipes frames into it; "
+                         "apt install ffmpeg)")
 
     from gear_sonic_sim.configs import SimLoopConfig
     from gear_sonic_sim.simulator_factory import SimulatorFactory
