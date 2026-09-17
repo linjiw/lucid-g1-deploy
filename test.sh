@@ -9,7 +9,18 @@
 # is spelled out in docs/DEPLOY_G1.md section 9.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-QUICK=0; [ "${1:-}" = "--quick" ] && QUICK=1
+QUICK=0
+while [ $# -gt 0 ]; do case "$1" in
+  --quick) QUICK=1; shift ;;
+  # Derived range, not a counted one: e784134 fixed run.sh printing a header one
+  # line short by hardcoding the count, and the same bug had been reintroduced in
+  # drill.sh and standby.sh. Print to the first non-comment line and drop it.
+  --help|-h) sed -n '2,/^[^#]/p' "$0" | sed '$d' | sed 's/^# \?//'; exit 0 ;;
+  # test.sh forwards nothing to anything, so an argument it does not recognise is
+  # a typo -- and the old parser answered `bash test.sh --help` by running the
+  # whole suite, MuJoCo rollout included.
+  *) echo "unknown option: $1"; exit 2 ;;
+esac; done
 PY="${PYTHON:-python3}"
 pass=0; fail=0; skip=0; warn=0
 ok()   { echo "  PASS  $*"; pass=$((pass+1)); }
@@ -19,8 +30,19 @@ warnm(){ echo "  WARN  $*"; warn=$((warn+1)); }
 hdr()  { echo; echo "== $* =="; }
 
 hdr "1/8  bundle parses under the runner's own reading rules"
+# This also re-runs the measurement that caught the joint-order bug of 04c56d2:
+# joint_pos.csv row 0 against the parity golden observations[0][:29], which is
+# the same quantity in policy space (check_joint_order() in
+# tools/verify_deploy_bundle.py). Measured by this check on the shipped bundle:
+# 4.81e-07 rad. The pre-fix MuJoCo-ordered CSV measured 1.1476 -- that one is
+# NOT re-run here; it is from 04c56d2 and is recorded in that function's
+# docstring. It reaches ONE of the three shipped clips, because both
+# receipts name walk_arc_cw_stop_001__A047 (the "clip" key,
+# parity/deploy_dr/parity_receipt.json:5 and parity/no_dr/parity_receipt.json:5);
+# crouch_idle_004__A246 and walk_ff_stop_270_R_very_slow_001__A445_M are checked
+# for width, frame count and quaternion norm, but not for joint VALUES.
 if $PY "$HERE/tools/verify_deploy_bundle.py" "$HERE" >/tmp/lucid_t1.log 2>&1; then
-  ok "metadata, CSVs, joint count + order, quaternion order, frame counts, parity"
+  ok "metadata, CSVs, joint order vs golden obs (1 of 3 clips), quaternions, frames, hashes"
 else
   bad "see /tmp/lucid_t1.log"; sed 's/^/        /' /tmp/lucid_t1.log | tail -8
 fi
@@ -86,7 +108,7 @@ for d in sorted(glob.glob(f"{here}/parity/*/")):
 sys.exit(rc)
 PY
 
-hdr "5/8  MuJoCo rollout with the reference controller"
+hdr "5/8  MuJoCo reference player runs end to end"
 if [ "$QUICK" -eq 1 ]; then
   skipm "--quick"
 elif ! $PY -c "import mujoco" >/dev/null 2>&1; then
@@ -107,7 +129,15 @@ else
       $PY -c "
 import json;r=json.load(open('$out/r.json'))['result']
 print(f\"        outcome={r['outcome']} t_end={r['t_end']}s pelvis_z={r['pelvis_z_end']}\")"
-      ok "rollout completed"
+      # PASS means the player ran, not that the robot stayed up, and that is
+      # deliberate. There is no --full-clip here, so the rollout stops at the
+      # anchor_pos tracking threshold (tools/mujoco_player.py, `if err > 0.5:`
+      # and the `if not full_clip:` / `break` under it), typically ~1.4 s;
+      # evaluate.sh's header measured what counting falls inside that window
+      # does -- 3 of 16 against 11 of 16 at heavy randomization. The outcome above
+      # is reported, not judged. The number that means something comes from
+      # `bash evaluate.sh`, which runs --full-clip throughout.
+      ok "player ran to its own stopping condition (outcome reported, not judged)"
     else
       bad "see /tmp/lucid_t5.log"
     fi
@@ -157,7 +187,11 @@ else
   if timeout 90 "$SIMPY" -u "$HERE/sim/run_robot_sim.py" --headless --duration 3 \
        >/tmp/lucid_t7.log 2>&1 && grep -q "EVENT epoch" /tmp/lucid_t7.log; then
     z=$(grep -oE "final pelvis height [0-9.]+" /tmp/lucid_t7.log | awk '{print $4}')
-    if [ -n "$z" ] && [ "$(echo "$z > 0.7" | bc -l 2>/dev/null || echo 1)" = "1" ]; then
+    # awk, not bc: bc is in no list setup.sh installs (its apt-get list), and the
+    # old `bc -l 2>/dev/null || echo 1` substituted "1" for ANY bc failure -- a
+    # missing bc included -- so on a machine set up by setup.sh this check
+    # reported PASS whatever the simulator's pelvis had done, collapse included.
+    if [ -n "$z" ] && awk -v z="$z" 'BEGIN{exit !(z>0.7)}'; then
       ok "publishes rt/lowstate, holds the standing pose at ${z} m with no controller"
     else
       bad "simulator ran but did not hold its pose (pelvis ${z:-?} m)"
@@ -205,8 +239,10 @@ Everything checked here passed. Note what is still NOT established:
     here it is large, and in the rehearsal the policy goes down within seconds.
 
 Value-level parity IS established, but not by this script: run
-`bash drill.sh --parity`, which drives the runner against the MuJoCo robot and
-compares its TensorRT engine against the shipped ONNX.
+`bash drill.sh --play --parity`, which drives the runner against the MuJoCo robot
+and compares its TensorRT engine against the shipped ONNX. `--play` is not
+optional: without it the clip is never started, and the comparison is against a
+reference parked at frame 0 (README **Limits** #2).
 
 Next, rehearse the deployment sequence end to end -- init, fixed stand, policy,
 emergency stop -- with the real runner driving a MuJoCo G1 over DDS:

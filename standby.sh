@@ -6,6 +6,10 @@
 #   bash standby.sh --sim --viewer         rehearse the whole loop, no robot
 #   bash standby.sh --policy no_dr         the control policy
 #
+# Any other argument is forwarded to run.sh verbatim. --motion is the one
+# exception: the clip is picked from the menu below, once per cycle, so a
+# --motion here is refused rather than allowed to override that choice silently.
+#
 # WHAT THIS IS, AND WHAT IT IS NOT
 #
 # The runner has no standby to return to. `operator_state.stop` is set in four
@@ -54,7 +58,22 @@ while [ $# -gt 0 ]; do case "$1" in
   --iface)  IFACE="$2"; shift 2 ;;
   --sim)    SIM=1; PASS+=(--sim); shift ;;
   --viewer) PASS+=(--viewer); shift ;;
-  --help|-h) sed -n '2,36p' "$0" | sed 's/^# \?//'; exit 0 ;;
+  # Refused, not forwarded. Everything else falls through to PASS, and PASS is
+  # appended AFTER this script's own --motion (below); run.sh assigns --motion on
+  # each occurrence, so a --motion given here would land last and silently win
+  # while the CYCLE banner still named the clip picked from the menu.
+  # To stderr, as run.sh's refusals are: a refusal on stdout is what disappears
+  # when the script is run under a pipe.
+  --motion) echo "standby.sh picks the clip from its own menu, so --motion here" >&2
+            echo "would override the one you pick without the banner saying so." >&2
+            echo "For a single pinned run:  bash run.sh --motion ${2:-<clip>}" >&2
+            exit 2 ;;
+  # The range is derived, not counted: this was '2,36p' of a header that had
+  # already grown to 44, so --help cut off at "...the feet are under it. So the"
+  # and never printed "A person has to put the robot back on its feet" or
+  # "automate past that prompt" -- the two sentences this script exists for.
+  # Commit e784134 fixed the same class of bug in run.sh by counting again.
+  --help|-h) sed -n '2,/^[^#]/p' "$0" | sed '$d' | sed 's/^# \?//'; exit 0 ;;
   *) PASS+=("$1"); shift ;;
 esac; done
 

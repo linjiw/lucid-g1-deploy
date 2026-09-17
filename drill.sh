@@ -7,7 +7,14 @@
 #   bash drill.sh --play                 ALSO play the clip ('T'), not just arm the policy
 #   bash drill.sh --latency 60           inject 60 ms of actuation latency at the robot
 #   bash drill.sh --hold 12              stay in CONTROL for 12 s before the stop
-#   bash drill.sh --iface eno1           use a real NIC instead of loopback
+#   bash drill.sh --motion <name>        rehearse one clip; it becomes motion index 0
+#   bash drill.sh --all-motions          hand the runner all three (index 0 is readdir order)
+#   bash drill.sh --parity               log obs and actions, TensorRT engine vs the ONNX
+#   bash drill.sh --record run.mp4       write an mp4 of the MuJoCo robot (ffmpeg; setup.sh installs it)
+#   bash drill.sh --no-band              no elastic band -- the robot sits down during INIT
+#   bash drill.sh --reset-on-fall        let the sim reset below 0.2 m; this HIDES the stop
+#   bash drill.sh --iface eno1           a real NIC instead of lo -- REFUSED by default
+#   bash drill.sh --robot-is-powered-off the override that refusal names, see below
 #
 # WHAT THIS IS
 #
@@ -16,6 +23,35 @@
 # robot. Nothing here is a simulation of the deployment; it IS the deployment,
 # with the physics substituted. That is the only way to rehearse the sequence
 # without a robot in the room.
+#
+# THE INTERFACE GATE
+#
+# The loopback default is not a detail. On 'lo' nothing this script does can
+# reach a robot; on a real NIC three of its choices go out on the wire with
+# nobody asked anything:
+#
+#   * sim/run_robot_sim.py is started on the SAME interface (below) and
+#     publishes rt/lowstate there -- on that bus it IS a robot. A G1 powered on
+#     over there makes two of them, both answering the runner.
+#   * the runner is launched with --disable-crc-check unconditionally, and has
+#     to be: the simulator computes no CRC at all (`grep -ic crc
+#     sim/run_robot_sim.py` is 0) and LowStateHandler returns before
+#     low_state_buffer_.SetData on a mismatch (g1_deploy_onnx_ref.cpp:2616-2628,
+#     read from source, not executed), so with the check on no LowState would
+#     reach the runner and it would wait in INIT forever. That same flag also
+#     switches off the joint-velocity abort -- g1_deploy_onnx_ref.cpp:2832 reads
+#     `if (body_dq[i] > 35 && !disable_crc_check_)`.
+#   * ']', optionally 'T', and 'O' are piped in on a timer. run.sh, on anything
+#     it is not told is a bench run, first reads a confirmation from /dev/tty --
+#     a pipe cannot answer it -- and only --assume-safety-checklist skips that;
+#     this script has no prompt at all, deliberately -- it is the scripted
+#     rehearsal.
+#
+# So the gate is on the INTERFACE, not on the CRC flag. A non-loopback --iface
+# is refused unless --robot-is-powered-off is passed, which is exactly what you
+# are asserting with it: nothing on that wire can move. An --iface the kernel
+# has never heard of is refused separately and says so: none of this reasoning
+# applies to an interface that is not there, and the fix is the spelling.
 #
 # THE SEQUENCE, and what the runner actually does at each step
 #
@@ -67,6 +103,7 @@ KEEP_FALLEN=1
 BAND=1
 PARITY=0
 RECORD=""
+ROBOT_OFF=0
 # Default to the clip every measured number in this bundle is about. The runner
 # starts on motion index 0, and which clip that is is NOT DEFINED: motion_data_
 # reader.hpp:685 uses an unsorted directory_iterator, so it is readdir order and
@@ -87,15 +124,77 @@ while [ $# -gt 0 ]; do case "$1" in
   --record) RECORD="$2"; shift 2 ;;
   --motion) MOTION="$2"; shift 2 ;;
   --all-motions) MOTION=""; shift ;;
-  --help|-h) sed -n '2,50p' "$0"; exit 0 ;;
+  --robot-is-powered-off) ROBOT_OFF=1; shift ;;
+  # The range is derived, not counted. Commit e784134 fixed run.sh printing
+  # lines 2..21 of a 22-line header; this line was '2,50p' of a header that had
+  # already grown to 56, so --help stopped at "Recovering to a" and never
+  # printed the part about restarting on the floor. Print to the first
+  # non-comment line and drop it: the help cannot fall behind the header again.
+  --help|-h) sed -n '2,/^[^#]/p' "$0" | sed '$d' | sed 's/^# \?//'; exit 0 ;;
   *) echo "unknown option: $1"; exit 2 ;;
 esac; done
+
+# THE INTERFACE GATE (the reasoning is in the header, under that name).
+iface_is_loopback() {  # 'lo', or any link the kernel flags LOOPBACK
+  [ "$1" = lo ] && return 0
+  command -v ip >/dev/null 2>&1 || return 1   # cannot tell -- treat it as real
+  ip -o link show dev "$1" 2>/dev/null | grep -q LOOPBACK
+}
+if ! iface_is_loopback "$IFACE"; then
+  # A name the kernel does not know is a typo, not the robot network, and
+  # iface_is_loopback cannot tell the two apart: `ip -o link show dev nosuchnic`
+  # prints nothing on STDOUT (the `Device "nosuchnic" does not exist.` goes to
+  # stderr, which the pipeline above discards) and exits 1, exactly as it does
+  # for a real NIC that is not loopback. Without this branch `--iface enp3s0` on
+  # a box whose NIC is enp130s0 fell through to the rt/lowstate and
+  # --disable-crc-check lecture below, with an empty ADDRS, instead of "check the
+  # spelling" -- both branches exercised in isolation, the drill itself not run.
+  # Refused either way, --robot-is-powered-off included: there is nothing to
+  # drill on.
+  #
+  # All of it goes to stderr, as run.sh's refusals do: drill.sh is run from
+  # scripts, and a refusal on stdout is the one line that vanishes under a pipe.
+  if command -v ip >/dev/null 2>&1 && ! ip -o link show dev "$IFACE" >/dev/null 2>&1; then
+    echo "REFUSING: this machine has no interface named $IFACE." >&2
+    echo "  'ip -o link show dev $IFACE' reports no such device, so this is a typo" >&2
+    echo "  and none of the robot-network reasoning below applies. 'ip link' lists" >&2
+    echo "  what is here; the drill's own default is loopback ('bash drill.sh')." >&2
+    exit 2
+  fi
+  ADDRS=$(ip -4 -o addr show dev "$IFACE" 2>/dev/null | awk '{print $4}' | tr '\n' ' ')
+  ADDRS="${ADDRS% }"
+  if [ "$ROBOT_OFF" -eq 0 ]; then
+    echo "REFUSING: --iface $IFACE is not a loopback interface${ADDRS:+ (it carries $ADDRS)}." >&2
+    case "$ADDRS" in *192.168.123.*)
+      echo "  192.168.123.x IS the robot network -- docs/ETHERNET_AND_SDK.md." >&2 ;;
+    esac
+    echo "  This drill would put a MuJoCo robot on that bus publishing rt/lowstate," >&2
+    echo "  run the runner with --disable-crc-check (which also disables the 35 rad/s" >&2
+    echo "  joint-velocity abort) and send ']' on a timer, with no prompt to anyone." >&2
+    echo "  Rehearse on loopback -- 'bash drill.sh' already defaults to --iface lo." >&2
+    echo "  If the robot on that wire is powered off and unplugged, say so:" >&2
+    echo "    bash drill.sh --iface $IFACE --robot-is-powered-off" >&2
+    exit 2
+  fi
+  echo "WARNING: drilling on $IFACE${ADDRS:+ ($ADDRS)}, which is not loopback." >&2
+  echo "  --robot-is-powered-off given: you are asserting that nothing on that wire" >&2
+  echo "  can move. The runner still runs with no CRC check and no 35 rad/s abort," >&2
+  echo "  and MuJoCo publishes rt/lowstate there for anything else listening." >&2
+fi
 
 ONNX="$HERE/policies/${POLICY}_s8600_g1.onnx"
 RUNNER="$HERE/runner/target/release/g1_deploy_onnx_ref"
 SIMPY="$HERE/.venv-sim/bin/python"
-LOGS="$HERE/results/drill"
+# One directory per drill, like run.sh's results/run/<timestamp>-... . This used
+# to be a fixed results/drill/ whose two logs were truncated on every
+# invocation, so the rehearsal docs/DEPLOY_G1.md asks for before EVERY hardware
+# session (its "**Bench first.**" paragraph, end of section 4, which asks for it
+# before every run on the robot) left exactly one record and nothing to compare
+# it against. 'latest' is added because the paths printed below are how the
+# parity output and the sim log are found.
+LOGS="$HERE/results/drill/$(date +%Y%m%d-%H%M%S)-$POLICY${MOTION:+-$MOTION}"
 mkdir -p "$LOGS"
+ln -sfn "$LOGS" "$HERE/results/drill/latest"
 
 MOTIONS_DIR="$HERE/motions"
 if [ -n "$MOTION" ]; then
@@ -135,6 +234,7 @@ else
 fi
 echo "  logs  $SIM_LOG"
 echo "        $RUN_LOG"
+echo "        results/drill/latest -> $(basename "$LOGS")"
 echo
 
 sim_args=(--iface "$IFACE" --status-hz 2 --latency-ms "$LATENCY")

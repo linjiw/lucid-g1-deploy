@@ -68,12 +68,35 @@ Every entry point takes the interface as its first argument or `--iface`:
 ```bash
 bash run.sh --policy deploy_dr                 # auto-detects a 192.168.123.x NIC
 bash run.sh --policy deploy_dr --iface enp3s0  # explicit
-bash drill.sh --iface enp3s0                   # the rehearsal, on the same NIC
+
+# the rehearsal on that same NIC, robot powered off and unplugged
+bash drill.sh --iface enp3s0 --robot-is-powered-off
 ```
 
 `run.sh` refuses to guess if it cannot find a `192.168.123.x` interface, which
 is deliberate: silently falling back to the wrong NIC is how you end up
 commanding a robot you did not mean to.
+
+**`drill.sh` refuses a non-loopback `--iface` outright** — `bash drill.sh
+--iface enp3s0` exits 2 — unless `--robot-is-powered-off` is passed as well.
+That flag is the override, and it is you asserting that nothing on that wire can
+move. The drill earns the gate by being scripted rather than driven:
+
+* it starts `sim/run_robot_sim.py` on the *same* interface, where the simulator
+  publishes `rt/lowstate` — on that bus it **is** a robot, so a G1 powered on
+  over there makes two of them, both answering the runner;
+* it launches the runner with `--disable-crc-check` unconditionally (it has to:
+  the simulator computes no CRC), and that same flag also switches off the
+  joint-velocity abort — `g1_deploy_onnx_ref.cpp:2832` reads
+  `if (body_dq[i] > 35 && !disable_crc_check_)`;
+* it sends `]`, optionally `T`, and `O` into the runner's stdin on a timer, with
+  **no prompt at all**, where `run.sh` without `--sim` first asks for a
+  confirmation it reads from `/dev/tty` (a pipe cannot answer it).
+
+The same reasoning, at length, is in `drill.sh`'s own header under
+`THE INTERFACE GATE`; `bash drill.sh --help` prints it. A name the kernel does
+not know gets a different refusal ("this machine has no interface named …"), so
+a typo is not mistaken for the robot network.
 
 ### Loopback
 
@@ -95,11 +118,40 @@ same real NIC and subnet, then:
 
 ```bash
 # machine A -- the "robot"
-python3 sim/run_robot_sim.py --iface enp3s0
+"$LUCID_SIM_PYTHON" sim/run_robot_sim.py --iface enp3s0
 
 # machine B -- the controller
-bash run.sh --policy deploy_dr --iface enp3s0
+bash run.sh --policy deploy_dr --sim --no-auto-sim --iface enp3s0
 ```
+
+Machine B needs `--sim` even though the robot is on machine A. `--sim` is what
+appends `--disable-crc-check` to the runner's arguments (`run.sh`'s
+`EXTRA+=(--disable-crc-check)` line), and that flag is not optional here: the
+simulator computes no CRC at all (`grep -ic crc sim/run_robot_sim.py` is 0, run
+in this session), so with the check on, `LowStateHandler` hits its
+`return` at `g1_deploy_onnx_ref.cpp:2626` before `low_state_buffer_.SetData` at
+`:2639` for every packet, and the runner waits in INIT forever. Passing the flag
+by hand instead does not work — `run.sh` refuses it without `--sim` (its
+`REFUSING: --disable-crc-check without --sim.` branch). `--no-auto-sim` stops
+machine B from starting a second MuJoCo robot of its own (`run.sh`'s
+`--no-auto-sim) AUTO_SIM=0` case). The explicit `--iface` survives `--sim`,
+which only picks a default when none was given
+(`[ "$SIM" -eq 1 ] && [ -z "$IFACE" ] && IFACE=lo`). Without `--sim`, machine B
+is a `mode     REAL ROBOT` run: it would stop at the `/dev/tty` safety
+confirmation, which is right for hardware and wrong for this.
+
+Not `python3`. `env.sh` puts `.venv/bin` first on `PATH`, so `python3` resolves
+to the main venv — which carries no `cyclonedds`; only `.venv-sim` does, the
+0.10.2 described above. `python3 sim/run_robot_sim.py` therefore dies at
+`import cyclonedds` inside `unitree_sdk2py.core.channel`, before the MuJoCo
+model is ever loaded. `env.sh` exports `LUCID_SIM_PYTHON` (`.venv-sim/bin/python`)
+and the `PYTHONPATH` that makes `sim/` and `sdk/` importable. All three scripts
+that start the simulator run it under that interpreter and never `python3`, but
+only `run.sh` honours the variable — it reads
+`SIMPY="${LUCID_SIM_PYTHON:-$HERE/.venv-sim/bin/python}"`, while `drill.sh` and
+`test.sh` both hardcode `SIMPY="$HERE/.venv-sim/bin/python"`. Pointing
+`LUCID_SIM_PYTHON` at a different interpreter therefore changes `run.sh` and
+not the other two.
 
 This is the closest rehearsal to the real thing short of hardware: real
 Ethernet, real multicast discovery, real latency and jitter on the wire.
