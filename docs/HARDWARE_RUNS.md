@@ -14,6 +14,11 @@ Fields that could not be recovered are marked `— unrecoverable`. They are left
 empty on purpose. Reconstructing them from memory and writing them down as if
 they had been recorded is the failure this file exists to prevent.
 
+The same rule applies to evidence destroyed later. The runner binary below was
+real evidence when this file was written and was overwritten six days after the
+run, by this project's own verification work. That is recorded as a loss rather
+than quietly softened into a claim that still sounds supported.
+
 ---
 
 ## Run 001 — 2026-09-11
@@ -22,7 +27,7 @@ they had been recorded is the failure this file exists to prevent.
 |---|---|
 | **Date** | 2026-09-11, approximately 17:15–17:30 EDT |
 | **Commit** | `e784134` — includes the joint-order fix `04c56d2`, so the reference motions were in correct IsaacLab order |
-| **Runner binary** | built 2026-09-10 14:20 from `runner/` at `a30501f`; no commit has touched `runner/src`, `runner/CMakeLists.txt` or `runner/cmake` since, so the binary in `runner/target/release/` on that machine is the one that ran |
+| **Runner binary** | built 2026-09-10 14:20 from `runner/` at `a30501f` — observed, but **the artifact is gone**: `runner/target/` is gitignored and that binary was overwritten by a rebuild on 2026-09-17 while verifying the build still configures without network. What survives is the source provenance: `git diff --name-only a30501f -- runner/src runner/cmake` is still empty, so the runner *source* that ran is exactly what is in the tree |
 | **Host** | Ubuntu 22.04.5 LTS, x86_64, NVIDIA GeForce RTX 5090 |
 | **NIC** | `enp130s0`, the deploy machine's wired port |
 | **TensorRT** | 10.13 (`policies/.trt_built_with`) |
