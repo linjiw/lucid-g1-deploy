@@ -29,9 +29,8 @@ The export produces five ONNX heads. They are not interchangeable:
 | `..._smpl.onnx` | 1770 | action [29] | SMPL-reference variant |
 | `..._teleop.onnx` | 1197 | action [29] | VR 3-point teleop variant |
 
-SONIC's own `deploy.sh` — the launcher in `gear_sonic_deploy`, **not** in this
-bundle, which ships `run.sh` and `drill.sh` instead — defaults to the **split**
-path (`--cp <prefix>` resolves
+SONIC's own `deploy.sh` — vendored here as `runner/deploy.sh`, and **not** this
+bundle's entry point — defaults to the **split** path (`--cp <prefix>` resolves
 `<prefix>_encoder.onnx` and `<prefix>_decoder.onnx`) because that is how the
 released SONIC controller ships. For a LUCID policy the **fused** path is
 simpler and is what this bundle is built for:
@@ -41,12 +40,25 @@ simpler and is what this bundle is built for:
 * the runner supports it — `g1_deploy_onnx_ref.cpp:2344` loads an encoder only
   when the observation config declares `encoder.dimension > 0`, and the parser
   explicitly ignores an encoder section when `token_state` is disabled
-  (`observation_config.hpp:332-338`). The runner's own usage line takes a single
+  (`observation_config.hpp:327-333`, the `// token_state disabled: encoder
+  section is IGNORED` branch). The runner's own usage line takes a single
   `model.onnx`.
 
 `--planner-file` is **optional** (`:4105`, `:2396`). The planner produces
 locomotion targets for the 10 Hz replanning thread; a motion-tracking policy
 replaying a fixed clip does not need one.
+
+**`runner/deploy.sh` is present, executable and must not be run.** It is
+upstream's launcher, kept so `runner/` stays diffable against upstream; nothing
+in this bundle invokes it. It defaults to `INTERFACE_MODE="real"` — the robot,
+not the simulator — points at `policy/release/model`, a planner and a reference
+directory that are not in this bundle, prints "Some files are missing" and
+continues anyway, then `apt`-installs its own dependencies and rebuilds through
+`just` into `runner/build/`, which is not the tree `build.sh` produces. Its
+"Proceed with deployment?" prompt reads stdin and treats an empty line as yes.
+The file's own banner comment enumerates all of that with line numbers; read it
+there rather than trusting this paragraph. The entry point is `run.sh`, with
+`drill.sh` to rehearse the same sequence against the simulator first.
 
 ## 2. The observation config
 
@@ -119,12 +131,14 @@ repository: it is a proprietary third-party package (maintained by
 point to, and it is arm64-only. Copy it from the upstream SONIC repository's
 `gear_sonic_deploy/thirdparty/` if you need it on the Orin.
 
-1. TensorRT — `find_package(TensorRT REQUIRED)` in `CMakeLists.txt:28`. Install
-   it, then `export TensorRT_ROOT=$HOME/TensorRT` in `~/.bashrc`;
+1. TensorRT — `find_package(TensorRT REQUIRED)` in `runner/CMakeLists.txt:28`.
+   (Not `runner/src/g1/g1_deploy_onnx_ref/CMakeLists.txt`; there are two.)
+   Install it, then `export TensorRT_ROOT=$HOME/TensorRT` in `~/.bashrc`;
    `scripts/setup_env.sh` reads it from there and prepends `$TensorRT_ROOT/lib`
    to `LD_LIBRARY_PATH`.
 2. onnxruntime with its CMake package (`find_package(onnxruntime REQUIRED)`,
-   `:30`), CUDA Toolkit ≥ 10.2 (`:42`).
+   `runner/CMakeLists.txt:30`), CUDA Toolkit ≥ 10.2
+   (`runner/CMakeLists.txt:42`, `find_package(CUDAToolkit 10.2 QUIET)`).
 3. `scripts/install_deps.sh` installs the rest: `just`, `clang`, `cmake`, `git`,
    `git-lfs`, `pkg-config`, `patchelf`, `zlib1g-dev`, `libgtest-dev`.
 4. ROS 2 is optional. `setup_env.sh` sets `HAS_ROS2=1` and
@@ -235,18 +249,36 @@ sweeps measure.
 
 1. `verify_deploy_bundle.py` passes.
 2. `validate_deploy_obs_config.py` passes against the runner you built.
-3. **Value-level parity.** `parity/` holds golden (observation, action) traces
-   from the reference implementation. `bash drill.sh --play --parity` drives the
-   runner against the MuJoCo robot and compares its TensorRT engine against the
-   shipped ONNX on the runner's own observations. This test has been run and it
-   passes — README **Limits** #2 has the figures and explains what the TensorRT
-   version pin has to do with it. Re-run it on the machine you will deploy from:
-   it is the check that a mismatched TensorRT fails.
+3. **Value-level parity — and it is not the `parity/` test.** Two separate
+   checks, on different data, that must not be collapsed into one claim
+   (`docs/RESULTS.md`, "Running it" item 2, has both):
 
-   Record the baseline **per policy**. `deploy_dr` sits at ~2e-06 mean and
-   `no_dr` at ~6.9e-05 on the same correctly-pinned TensorRT 10.13.3, a 33×
-   spread that is a property of the networks, not of the install. Judge a new
-   export against its own first reading, not against `deploy_dr`'s.
+   - `bash drill.sh --play --parity` drives the runner against the MuJoCo robot
+     and compares **its TensorRT engine against the shipped ONNX, on the
+     runner's own observations**. It never reads `parity/`. This is the check
+     that a mismatched TensorRT fails, and the one to re-run on the machine you
+     will deploy from. It has been run and it passes — README **Limits** #2 has
+     the figures and the version-pin argument.
+   - `parity/` holds golden (observation, action) traces from the reference
+     implementation, and is consumed by `bash test.sh`, check 4 of 8 — ONNX
+     against the golden actions, no runner and no GPU.
+
+   Passing the first says nothing about the runner's **observation pipeline**:
+   it feeds the engine and the ONNX the same runner-built observation, so a term
+   the runner transposes is invisible to it. That question is still open.
+
+   Record the baseline **per policy**, and compare policies only inside one
+   measurement series. The one series that measured both — 3 repeats, 648 ticks,
+   same GPU, same runner, same pinned 10.13.3 — reads `deploy_dr` mean |delta|
+   **2.07e-06** against `no_dr` **6.88e-05**, a **~33×** spread that is a
+   property of the networks, not of the install
+   (`tools/check_runtime_parity.py`, MEASURED RESULT, the table whose columns
+   are `no_dr` and `deploy_dr, same series`). `deploy_dr`'s **1.45e-06** is a
+   *different* run — the separate 499-tick one in the table above it — and a
+   run of that length that happens to miss the known logging-artefact tick reads
+   mean ~4.2e-07 instead, and also passes. Do not divide figures from two
+   different series against each other. Judge a new export against its own first
+   reading, not against `deploy_dr`'s.
 4. Bench first: `bash drill.sh --play --parity`, then `bash run.sh --sim
    --viewer` to drive it by hand.
 5. Measure the realised control period and end-to-end latency.
@@ -260,7 +292,10 @@ sweeps measure.
 
 ## 9. Status of each claim here
 
-Updated 2026-09-09, after building and running the runner on the x86 workstation.
+Updated after `sim/run_robot_sim.py` landed and after run 001; the 2026-09-09
+revision predated both, which is why the engine-parity row below used to say it
+needed a robot state source. Run 001 on hardware was 2026-09-11
+(`docs/HARDWARE_RUNS.md`).
 
 | | |
 |---|---|
@@ -271,7 +306,8 @@ Updated 2026-09-09, after building and running the runner on the x86 workstation
 | motion CSV format, quaternion order, metadata format | verified by re-implementing the runner's parsers, then confirmed by the runner loading them |
 | body index list | verified — independently derived, reproduces the repository's example bundle exactly |
 | joint order, kp/kd, default pose, action scale, control rate | verified — byte-identical between `robots/g1.py` and `policy_parameters.hpp` |
-| the runner reproduces the policy's actions | **NOT verified** — needs the `--policy-input-logfile` comparison against `parity/`, which requires a robot state source to drive the control loop |
+| the runner's TensorRT engine reproduces the shipped ONNX on the runner's own observations | **VERIFIED** — `bash drill.sh --play --parity`, TensorRT 10.13.3, FP32, 499 ticks, mean \|delta\| 1.45e-06 (README **Limits** #2). `sim/run_robot_sim.py` supplies the robot state source this row once said was missing. |
+| the runner's observation pipeline agrees with the one that produced `parity/` | **NOT answered** — the check above feeds the engine and the ONNX the *same* runner-built observation, so a term the runner transposes is invisible to it. `docs/RESULTS.md`, "Running it" item 2, has the detail and why `--compare` and `--policy-input-logfile` do not yet meet. |
 | init + fixed stand on hardware | verified once — run 001, 2026-09-11, in a gantry harness; see `HARDWARE_RUNS.md` |
 | POLICY behaviour on hardware | **NOT verified** — `]` has never been pressed on a robot |
 

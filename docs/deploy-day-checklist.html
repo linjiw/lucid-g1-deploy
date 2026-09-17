@@ -277,11 +277,31 @@
         <input type="checkbox" id="s03">
         <div class="step-body">
           <label class="step-title" for="s03"><span class="id">0.3</span><span class="name">Engine parity — and write the number down</span><span class="tag reh">rehearsed</span></label>
-          <p>Measured on <code>deploy_dr</code>, TensorRT 10.13.3, FP32, 499 ticks:
-             <strong>max |delta| 6.2e-06, mean 4.2e-07.</strong></p>
-          <p><strong>Record the baseline per policy.</strong> <code>deploy_dr</code> sits near 2e-06 mean and
-             <code>no_dr</code> near 6.9e-05 on the <em>same</em> correctly-pinned install — a 33× spread that is
-             a property of the networks, not the machine. Judge a new export against its own first reading.</p>
+          <p>Measured on <code>deploy_dr</code>, TensorRT 10.13.3, FP32. Write
+             <strong>both</strong> numbers down. The tool prints them on <strong>two separate lines</strong>
+             (<code>max |delta|</code>, then <code>mean |delta|</code>, after <code>compared &lt;n&gt; ticks</code>),
+             so do not go looking for one line with both on it. The reading on record for this bundle is the
+             README's "Value-level parity" block: <code>compared 499 ticks</code>,
+             <strong>max |delta| 5.722e-06</strong>, <strong>mean |delta| 4.204e-07</strong>; the README
+             compresses the pair onto one line, which is the README's formatting, not the tool's.</p>
+          <div class="finding">
+            <span class="flabel">Two different means are both correct, and you may get either</span>
+            <p>A run containing the known logging-artefact tick reads <strong>mean ~1.45e-06, max
+               2.37e-03</strong> (<code>tools/check_runtime_parity.py</code>, MEASURED RESULT, its 499-tick
+               table); the artefact-free runs the same file records as corroboration read <strong>max 5.1e-06
+               and 6.2e-06 over 498 ticks</strong>. The tick count does not tell the two apart — the 499-tick
+               run quoted above and the 499-tick run quoted here are different runs. That
+               outlier is one tick in 499 where <code>obs_buffer_</code> is dumped after <code>Infer()</code> has
+               already consumed it — it affects the log, not the robot. Both readings pass.</p>
+          </div>
+          <p><strong>Record the baseline per policy — and compare policies only inside one series.</strong>
+             The one series that measured both is 3 repeats, 648 ticks, same GPU, same runner, same pinned
+             10.13.3: <code>deploy_dr</code> mean |delta| <strong>2.07e-06</strong> against <code>no_dr</code>
+             <strong>6.88e-05</strong>, a <strong>~33×</strong> spread that is a property of the networks, not
+             the machine (<code>tools/check_runtime_parity.py</code>, MEASURED RESULT, the table whose columns
+             are <code>no_dr</code> and <code>deploy_dr, same series</code>). <code>deploy_dr</code>'s
+             <strong>1.45e-06</strong> above is a <em>different</em> run — the separate 499-tick one — so do
+             not divide the two against each other. Judge a new export against its own first reading.</p>
           <pre><code><span class="cmd">bash</span> drill.sh --play --parity</code></pre>
         </div></div></li>
 
@@ -322,10 +342,14 @@
         <input type="checkbox" id="s11">
         <div class="step-body">
           <label class="step-title" for="s11"><span class="id">1.1</span><span class="name">Address, link, and proof of DDS</span><span class="tag hw">hardware</span></label>
-          <pre><code><span class="cmd">sudo</span> ip addr add 192.168.123.222/24 dev enp3s0
+          <pre><code><span class="cmd">ip</span> link                                       <em># find your NIC</em>
+<span class="cmd">sudo</span> ip addr add 192.168.123.222/24 dev enp3s0
 <span class="cmd">sudo</span> ip link set enp3s0 up
 <span class="cmd">ping</span> -c3 192.168.123.161
 <span class="cmd">sudo</span> tcpdump -i enp3s0 -c 20 udp portrange 7400-7500</code></pre>
+          <p><strong><code>enp3s0</code> is an example, not a constant.</strong> It is the bench machine's port;
+             the machine that did run 001 used <code>enp130s0</code>. Substitute your own everywhere in this
+             block.</p>
           <p>Silence on the tcpdump means DDS is not flowing. Fix it before anything else — the runner
              otherwise sits forever printing <code>LowState is not available</code>, which looks like a hang
              and is correct behaviour.</p>
@@ -385,8 +409,22 @@
         <input type="checkbox" id="s31">
         <div class="step-body">
           <label class="step-title" for="s31"><span class="id">3.1</span><span class="name">Launch with the clip pinned</span><span class="tag reh">rehearsed</span></label>
-          <pre><code><span class="cmd">bash</span> run.sh --policy deploy_dr --iface enp3s0 \
+          <pre><code><span class="cmd">bash</span> run.sh --policy deploy_dr \
        --motion walk_arc_cw_stop_001__A047</code></pre>
+          <p><strong>No <code>--iface</code> on purpose.</strong> With none given <code>run.sh</code> finds the
+             interface holding a <code>192.168.123.x</code> address, prints
+             <code>auto-detected robot interface: &lt;name&gt;</code>, and refuses rather than guessing if there
+             is none. Read that name back and check it matches what you wired in 1.1. Pass
+             <code>--iface &lt;name&gt;</code> only to override a wrong pick. Later, after the
+             <code>policy</code>/<code>motion</code>/<code>iface</code> banner and the real-robot safety
+             confirmation and before the runner starts, it prints
+             <code>log &nbsp;&nbsp;&nbsp;&nbsp;&lt;dir&gt;</code> — that is this run's record; see 5.4.</p>
+          <p><strong>The four flags that decide what is kept.</strong> <code>--csv-logs</code> /
+             <code>--no-csv-logs</code> force the runner's CSV set on or off (default: on for a real robot,
+             off for <code>--sim</code>); <code>--log-dir &lt;dir&gt;</code> moves the <strong>parent</strong>
+             of the run directory; <code>--assume-safety-checklist</code> skips the
+             <code>Proceed? [y/N]</code> question, which <code>run.sh</code> reads from <code>/dev/tty</code>
+             so that a pipe cannot answer it. <code>bash run.sh --help</code> prints all of them.</p>
           <div class="finding">
             <span class="flabel">Always pass --motion</span>
             <p>Which clip is motion index 0 is <strong>not defined</strong>.
@@ -413,13 +451,24 @@
       <li class="step"><div class="step-top">
         <input type="checkbox" id="s33">
         <div class="step-body">
-          <label class="step-title" for="s33"><span class="id">3.3</span><span class="name">There is no health check before arming</span><span class="tag reh">rehearsed</span></label>
+          <label class="step-title" for="s33"><span class="id">3.3</span><span class="name">There is no health check before arming</span><span class="tag read">read</span></label>
           <div class="finding">
             <span class="flabel">The step the procedure wanted, and the runner does not have</span>
-            <p>Pressing <code>F</code> during the fixed stand does <strong>nothing</strong>. The temperature
-               handler sits inside <code>case ProgramState::CONTROL</code> (<code>:3859</code>), and so does the
-               <code>Loop timing</code> print (<code>:4049</code>). Rehearsed: <code>F</code> through the whole stand
-               produced not one line.</p>
+            <p>Pressing the temperature key during the fixed stand does <strong>nothing</strong>, whichever
+               key it is in your mode. The handler sits inside <code>case ProgramState::CONTROL</code>
+               (<code>g1_deploy_onnx_ref.cpp:3859</code>; that case opens at <code>:3839</code>), and so does
+               the <code>Loop timing</code> print (<code>:4049</code>).</p>
+            <p><strong>Which key that is depends on <code>--input-type</code>.</strong> In the default
+               <code>keyboard</code> interface, motion-tracking branch (<code>use_planner = false</code>,
+               <code>keyboard_handler.hpp:85</code>) the binding is <code>:318-319</code>
+               <code>case 'h': case 'H'</code>; <code>F</code> is bound only in the planner branch,
+               <code>:256-257</code>, which Enter switches to. Under <code>manager</code> /
+               <code>gamepad_manager</code> it is reversed — see the key table at the end of this page. The
+               runner's own comment at <code>g1_deploy_onnx_ref.cpp:3858</code> says "(F key)" and is wrong for
+               the default interface. The earlier rehearsal held <code>F</code> down through a whole stand and
+               saw nothing — but <code>F</code> is unbound in that branch, so it established nothing.
+               <strong><code>H</code> has never been pressed</strong>, in a stand or while armed; this step is
+               read from source, not executed.</p>
           </div>
           <p>So in WAIT_FOR_CONTROL there are <strong>no motor temperatures, no LowState age, no loop
              timing</strong>. A dry run establishes only that the engine loaded, that LowState is arriving
@@ -564,7 +613,36 @@ AFTER STOP    0.063 → 0.064 m                kp 0.0   kd 8.0</code></pre>
           <p><code>standby.sh</code> pins one clip per launch, runs it through <code>run.sh</code>, and gates every
              cycle on someone confirming the robot is upright and supported. It adds nothing to the runner —
              each cycle is an ordinary <code>run.sh</code>, and the restart is what re-enters INIT.</p>
-          <pre><code><span class="cmd">bash</span> standby.sh --iface enp3s0</code></pre>
+          <pre><code><span class="cmd">bash</span> standby.sh      <em># --iface &lt;name&gt; only if the auto-detect is wrong</em></code></pre>
+        </div></div></li>
+
+      <li class="step"><div class="step-top">
+        <input type="checkbox" id="s54">
+        <div class="step-body">
+          <label class="step-title" for="s54"><span class="id">5.4</span><span class="name">Copy the run directory off the machine — before the next run</span><span class="tag read">read</span></label>
+          <div class="finding">
+            <span class="flabel">This is the step run 001 did not have</span>
+            <p><code>run.sh</code> wrote no files then. The terminal scrollback was the only copy of the only
+               hardware data this project has produced, and it is gone — see <code>docs/HARDWARE_RUNS.md</code>.
+               Commit <code>17491f9</code> made every run record itself.</p>
+          </div>
+          <p><code>run.sh</code> creates <code>results/run/&lt;timestamp&gt;-&lt;policy&gt;[-&lt;motion&gt;]/</code> and
+             prints its path as <code>log &nbsp;&nbsp;&nbsp;&nbsp;&lt;dir&gt;</code> <strong>at launch</strong>,
+             before the runner starts. The stamp has one-second resolution, so a relaunch inside the same
+             second gets <code>-2</code>, <code>-3</code> appended (<code>run.sh</code>, the
+             <code>while [ -e "$RUNDIR" ]; do RUNDIR="$RUNBASE-$RUNSEQ"</code> loop) — read the printed path,
+             do not reconstruct it. It holds <code>console.log</code> (stdout and stderr, line-buffered
+             through <code>stdbuf -oL</code>), <code>run_info.txt</code> (date, policy, motion, iface,
+             real-robot-vs-sim, commit, TensorRT version, GPU, kernel, host, the exec line, and an exit line
+             written from the EXIT trap so a crash or a Ctrl-C is recorded too) and <code>csv/</code> — the
+             runner's full CSV set, <strong>on by default for a real robot</strong> and off for
+             <code>--sim</code>. <code>--csv-logs</code> / <code>--no-csv-logs</code> override that;
+             <code>--log-dir &lt;dir&gt;</code> names the <strong>parent</strong>, and each run still gets its own
+             timestamped subdirectory under it.</p>
+          <p><strong><code>.gitignore:13</code> excludes <code>results/</code>, so nothing here leaves the machine
+             through git.</strong> <code>scp</code> or <code>rsync</code> the directory somewhere durable before
+             you launch again. <code>run.sh</code> says so itself on the way out, under
+             <code>log saved: &lt;dir&gt;</code>.</p>
         </div></div></li>
     </ul>
   </section>
@@ -579,12 +657,29 @@ AFTER STOP    0.063 → 0.064 m                kp 0.0   kd 8.0</code></pre>
         <tr><td>T</td><td><strong>play</strong> the clip from the current frame to its end</td></tr>
         <tr><td>O</td><td><strong>emergency stop</strong> — kp 0, kd 8, tau 0. Terminal.</td></tr>
         <tr><td>N / P</td><td>next / previous motion</td></tr>
-        <tr><td>R</td><td>reset the clip to frame 0, paused</td></tr>
+        <tr><td>R</td><td>reset the clip to frame 0, paused — a <strong>reference discontinuity</strong> of the same kind if the policy is armed; its size depends on where in the clip you press it, and step 4.2 has the frame-0 distances that bound it</td></tr>
         <tr><td>I</td><td>reinitialise heading from the current IMU</td></tr>
-        <tr><td>F</td><td>motor temperatures — <strong>only while armed</strong>; silent in the stand</td></tr>
+        <tr><td>H</td><td>motor temperatures — default <code>keyboard</code> interface only, and <strong>only while armed</strong>; silent in the stand. Under <code>manager</code> the key is <code>F</code>; see below.</td></tr>
+        <tr><td>Enter</td><td>toggle planner mode — <strong>no planner is loaded in this bundle</strong>, so it prints <code>Planner not loaded - cannot enable</code> and in the same tick clears <code>play</code> and snaps the reference back to frame 0, policy still armed (<code>keyboard_handler.hpp:462-472</code>). Do not press it out of habit.</td></tr>
         <tr><td>Ctrl-C</td><td>kills the process — <strong>no damping command, terminal left raw</strong></td></tr>
       </tbody>
     </table></div>
+    <p style="margin-top:14px;font-size:15px;color:var(--ink-2)">
+      <strong>Which key reports temperatures depends on <code>--input-type</code>; state the mode before you
+      state the key.</strong> This table is the default <code>keyboard</code> interface: <code>H</code> is bound
+      at <code>keyboard_handler.hpp:318-319</code> and <code>F</code> only inside the planner branch
+      (<code>:256-257</code>), so under plain <code>keyboard</code> — no planner loaded — <code>F</code> does
+      nothing. Under <code>--input-type manager</code> it is reversed, because <code>InterfaceManager</code>
+      consumes stdin before the keyboard handler sees it: <code>F</code> is the temperature key
+      (<code>interface_manager.hpp:155-160</code>) and <code>H</code> is taken as
+      <strong>decrease left-hand compliance</strong> (<code>:124-129</code>) and never forwarded.
+      <code>gamepad_manager</code> binds <code>F</code> the same way
+      (<code>gamepad_manager.hpp:136-140</code>). This bundle's 1570-term observation config does not observe
+      <code>vr_3point_compliance</code>, so the runner prints <code>Compliance control: DISABLED</code> at
+      startup and the compliance change is ignored for control
+      (<code>g1_deploy_onnx_ref.cpp:2532-2538</code>) — but you still lose the temperature reading you asked
+      for. Read from source, not executed.
+    </p>
     <p style="margin-top:14px;font-size:15px;color:var(--ink-2)">
       Lower case works for all of them except <code>]</code>. The Unitree wireless remote is supported
       unmodified via <code>--input-type gamepad</code> (or <code>manager</code> for both at once):

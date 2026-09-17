@@ -9,10 +9,14 @@ simulation. `docs/HARDWARE_RUNS.md` records that run and what it established.
 This procedure cannot make an armed hardware run safe; it can only stop you from
 discovering a software problem while the robot is powered.
 
-A tick-through version of this page, for use in the lab, is published at
-<https://claude.ai/code/artifact/0775dd15-78a8-4b64-bcaa-f78f4f1f411a>
-and its source is `docs/deploy-day-checklist.html` — republish that file to the
-same URL rather than creating a second artifact.
+A tick-through version of this page, for use in the lab, is
+`docs/deploy-day-checklist.html`. **Open that file from disk — it is the source
+of record.** It is also published at
+<https://claude.ai/code/artifact/0775dd15-78a8-4b64-bcaa-f78f4f1f411a> for
+convenience; republish the local file to that same URL rather than creating a
+second artifact, and never edit the hosted copy. Do not plan the day around the
+URL: the deploy machine is wired to `192.168.123.0/24` for the robot and may
+have no route off that subnet.
 
 Each step carries what it is worth:
 
@@ -55,13 +59,38 @@ FAIL stops the day.
 bash drill.sh --play --parity
 ```
 
-Measured here on `deploy_dr`, TensorRT 10.13.3, FP32, 499 ticks:
-**max |delta| 6.2e-06, mean 4.2e-07.**
+Measured here on `deploy_dr`, TensorRT 10.13.3, FP32.
+Write down **both** numbers. The tool prints them on **two separate lines** —
+`tools/check_runtime_parity.py` emits `  max |delta|   ...` and then
+`  mean |delta|  ...` after `compared <n> ticks` — so do not go looking for one
+line with both on it. The reading on record for this bundle is README's
+"Value-level parity" block: `compared 499 ticks`, **max |delta| 5.722e-06**,
+**mean |delta| 4.204e-07**. The README compresses the pair onto one line; that
+is the README's formatting, not the tool's.
 
-**Record the baseline per policy.** `deploy_dr` sits near 2e-06 mean and `no_dr`
-near 6.9e-05 on the *same* correctly-pinned install — a 33× spread that is a
-property of the networks, not of the machine. Judge a newly exported policy
-against its own first reading, never against `deploy_dr`'s.
+**Two different means are both correct, and you may get either.** A run that
+contains the known logging artefact tick reads **mean ~1.45e-06, max 2.37e-03**
+(`tools/check_runtime_parity.py`, MEASURED RESULT, its 499-tick table); the
+artefact-free runs the same file records as corroboration read **max 5.1e-06 and
+6.2e-06 over 498 ticks**. So the tick count does not tell the two apart — the
+499-tick run quoted just above and the 499-tick run quoted here are different
+runs. The outlier is one tick in 499 where `obs_buffer_` is dumped after
+`Infer()` has already consumed it, so the log catches one input update later
+than the inference did — it affects the log, not the robot. The four checks that
+establish that are in `tools/check_runtime_parity.py`, under "its one outlier
+(1 tick, 2.37e-03) is" — the four bullets that follow it. Both readings pass;
+neither is a regression.
+
+**Record the baseline per policy — and compare policies only inside one
+series.** The one series that measured both is 3 repeats, 648 ticks, same GPU,
+same runner, same pinned 10.13.3: `deploy_dr` mean |delta| **2.07e-06** against
+`no_dr` **6.88e-05**, a **~33×** spread that is a property of the networks, not
+of the machine (`tools/check_runtime_parity.py`, MEASURED RESULT, the table whose
+columns are `no_dr` and `deploy_dr, same series`). `deploy_dr`'s **1.45e-06**
+above is a *different* run — the separate 499-tick one — so do not divide the
+two against each other; that gives a 47× that no single measurement supports.
+Judge a newly exported policy against its own first reading, never against
+`deploy_dr`'s.
 
 **0.4 GPU headroom.** **[rehearsed]** — and found the hard way
 
@@ -116,7 +145,13 @@ not watch it happen for the first time on a robot.
 
 **1.1 Address and link.** **[hardware]**
 
+**The NIC name below is an example, not a constant.** It is `enp3s0` on the
+bench machine and was `enp130s0` on the machine that did run 001
+(`docs/HARDWARE_RUNS.md`). Find yours first and substitute it everywhere in this
+block:
+
 ```bash
+ip link                                                # find your NIC
 sudo ip addr add 192.168.123.222/24 dev enp3s0
 sudo ip link set enp3s0 up
 ping -c3 192.168.123.161
@@ -173,8 +208,30 @@ The first run with the robot powered should never reach the policy.
 **3.1 Launch, with the clip pinned.** **[rehearsed]**
 
 ```bash
-bash run.sh --policy deploy_dr --iface enp130s0 --motion walk_arc_cw_stop_001__A047
+bash run.sh --policy deploy_dr --motion walk_arc_cw_stop_001__A047
 ```
+
+**No `--iface` here on purpose.** With none given, `run.sh` scans for the
+interface holding a `192.168.123.x` address, prints
+`auto-detected robot interface: <name>`, and refuses outright rather than
+guessing if it finds none. Read that printed name back and check it is the NIC
+you wired in Phase 1. Pass `--iface <name>` only to override a wrong pick —
+hard-coding a NIC name in this procedure is how the two halves of it came to
+disagree.
+
+`run.sh` also prints `log      <dir>` before the runner starts — but not next:
+it comes after the `policy` / `motion` / `iface` banner and, on a real robot,
+after the safety confirmation. That directory is where this run is being
+recorded; see 5.4.
+
+**The four flags that decide what is kept.** `--csv-logs` / `--no-csv-logs`
+force the runner's CSV set on or off (default: on for a real robot, off for
+`--sim`). `--log-dir <dir>` moves the **parent** of the run directory, not the
+run directory itself. `--assume-safety-checklist` skips the `Proceed? [y/N]`
+question — which exists in that form because `run.sh` reads the answer from
+`/dev/tty`, so a pipe cannot answer it for you. Use that last flag only when you
+are asserting the harness, e-stop and fallback yourself. `bash run.sh --help`
+prints all of them from the script's own header.
 
 **Always pass `--motion`.** Which clip is motion index 0 is *not defined*:
 `motion_data_reader.hpp:685` enumerates the directory with an unsorted
@@ -194,13 +251,29 @@ vendor's own sim config ships `ENABLE_ELASTIC_BAND: True` for this reason.
 This is a simulation result about a simulation model. It does not prove a real
 G1 falls over. Treat it as a reason to have the harness on.
 
-**3.3 Health check — and there isn't one.** **[rehearsed]**
+**3.3 Health check — and there isn't one.** **[read]**
 
-This is the step the procedure wanted and the runner does not have. Pressing
-`F` during the fixed stand does **nothing**: the temperature handler sits inside
-`case ProgramState::CONTROL` (`:3859`), and so does the `Loop timing` print
-(`:4049`). Rehearsed here — `F` held down through the whole stand produced not
-one line of output.
+This is the step the procedure wanted and the runner does not have. Pressing the
+temperature key during the fixed stand does **nothing**, whichever key it is in
+your mode: the temperature handler sits inside `case ProgramState::CONTROL`
+(`g1_deploy_onnx_ref.cpp:3859`; that case opens at `:3839`), and so does the
+`Loop timing` print (`:4049`).
+
+**Which key that is depends on `--input-type`.** In the default `keyboard`
+interface, motion-tracking branch (`use_planner = false`,
+`keyboard_handler.hpp:85`), the temperature request is bound at
+`keyboard_handler.hpp:318-319` `case 'h': case 'H'`; `F` is bound only in the
+planner branch, `:256-257`, which Enter switches to. Under
+`--input-type manager` or `gamepad_manager` it is the other way round — the
+manager reads stdin first and takes `F` for itself. "The operator keys" below
+has both. The runner's own comment at `g1_deploy_onnx_ref.cpp:3858` says
+"(F key)"; that is right for the manager interfaces and the planner branch and
+wrong for the default one, so do not take it as confirmation. Earlier revisions
+of this page named `F` for the default mode, and the rehearsal that "confirmed"
+the silence held `F` down through a whole stand: it produced no output, but `F`
+is unbound in that branch, so that rehearsal established nothing either way.
+**`H` has never been pressed — not in a stand, not while armed.** The claim
+above is read from source, not executed.
 
 So in WAIT_FOR_CONTROL the runner reports **no motor temperatures, no LowState
 age, no loop timing**. The only things a dry run actually establishes are that
@@ -355,8 +428,36 @@ is upright and supported. It adds nothing to the runner — each cycle is an
 ordinary `run.sh`.
 
 ```bash
-bash standby.sh --iface enp3s0
+bash standby.sh          # add --iface <name> only if the auto-detect is wrong
 ```
+
+**5.4 Copy the run directory off the machine. Before the next run.** **[read]**
+
+This is the step run 001 did not have, and run 001 is why it is here: `run.sh`
+wrote no files then, the terminal scrollback was the only copy, and it is gone
+(`docs/HARDWARE_RUNS.md`). `17491f9` made every run record itself.
+
+`run.sh` creates `results/run/<timestamp>-<policy>[-<motion>]/` and prints its path
+as `log      <dir>` at launch, before the runner starts. The stamp has one-second
+resolution, so a relaunch inside the same second gets `-2`, `-3` appended
+(`run.sh`, the `while [ -e "$RUNDIR" ]; do RUNDIR="$RUNBASE-$RUNSEQ"` loop) —
+read the printed path, do not reconstruct it. It holds:
+
+| | |
+|---|---|
+| `console.log` | the runner's stdout and stderr, line-buffered through `stdbuf -oL` so it is written as it happens, not in 4 KB lumps |
+| `run_info.txt` | date, policy, motion, iface, real-robot-vs-sim, commit, TensorRT version, GPU, kernel, host, the exact exec line — and an exit line written from `run.sh`'s EXIT trap, so a crash or a Ctrl-C is recorded too |
+| `csv/` | the runner's full CSV set. **On by default for a real robot**, off for `--sim`; `--csv-logs` / `--no-csv-logs` override that |
+
+`--log-dir <dir>` names the **parent**, not the run directory: each run still
+gets its own timestamped subdirectory under it. Two runs are never put in one
+directory, because the runner's CSV sinks open with `std::ios::app`: they would
+append into the same `q.csv` with `time_ms` restarting mid-file. That is what the
+`-2` suffix above prevents.
+
+**`.gitignore:13` excludes `results/`, so nothing here leaves the machine through
+git.** `scp` or `rsync` the directory somewhere durable before you launch again.
+`run.sh` says so itself on the way out, under `log saved: <dir>`.
 
 ---
 
@@ -368,14 +469,32 @@ bash standby.sh --iface enp3s0
 | `T` | **play** the clip from the current frame to its end |
 | `O` | **emergency stop** — kp 0, kd 8, tau 0. Terminal. |
 | `N` / `P` | next / previous motion |
-| `R` | reset the clip to frame 0, paused |
+| `R` | reset the clip to frame 0, paused — a **reference discontinuity** of the same kind if the policy is armed; its size depends on where in the clip you press it, and step 4.2 has the frame-0 distances that bound it |
 | `I` | reinitialise heading from the current IMU |
 | `Q` / `E` | delta heading ∓ π/12 |
-| `F` | report motor temperatures — **only while armed**; silent in the stand |
-| Enter | toggle planner mode |
+| `H` | report motor temperatures — default `keyboard` interface only, and **only while armed**; silent in the stand. Under `manager` it is `F`; see below. |
+| Enter | toggle planner mode — **no planner is loaded in this bundle**, so it prints `Planner not loaded - cannot enable` and, in the same tick, clears `play` and snaps the reference back to frame 0 with the policy still armed (`keyboard_handler.hpp:462-472`). That is the `R` discontinuity, caused by accident. Do not press Enter out of habit. |
 | Ctrl-C | kill the process — **no damping command, terminal left raw** |
 
 Lower case works for all of them except `]`.
+
+**Which key reports temperatures depends on `--input-type`. State the mode
+before you state the key.** This table is the default `keyboard` interface:
+`H` is bound at `keyboard_handler.hpp:318-319`, and `F` only inside the planner
+branch (`:256-257`), so under plain `keyboard` — no planner loaded — `F` does
+nothing.
+
+Under `--input-type manager` it is reversed, because `InterfaceManager` consumes
+stdin before the keyboard handler sees it: `F` is the temperature key there
+(`interface_manager.hpp:155-160`), and `H` is taken as **decrease left-hand
+compliance** (`:124-129`) and never forwarded. `gamepad_manager` binds `F` the
+same way (`gamepad_manager.hpp:136-140`). With this bundle's 1570-term
+observation config the policy does not observe `vr_3point_compliance`, so the
+runner prints a `Compliance control: DISABLED` banner at startup and that
+compliance change is ignored for control (`g1_deploy_onnx_ref.cpp:2532-2538`) —
+but you still lose the temperature reading you asked for. The runner's own
+comment at `g1_deploy_onnx_ref.cpp:3858` reads "(F key)" and is wrong for the
+default interface. Read from source, not executed.
 
 The Unitree wireless remote is also supported, unmodified, via
 `--input-type gamepad` (or `manager` for keyboard *and* remote together, switched

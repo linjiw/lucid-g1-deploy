@@ -161,14 +161,34 @@ which is how `drill.sh` scripts the whole sequence.
 | key | effect |
 |---|---|
 | `]` | start control (WAIT_FOR_CONTROL → CONTROL) — **arms the policy only** |
-| `O` | **emergency stop** (uppercase; the manager interface also takes `o`) |
+| `O` | **emergency stop** |
 | `N` | next motion |
+| `P` | previous motion |
 | `T` | play / resume playback |
 | `R` | restart the current motion at frame 0, paused |
 | `I` | reinitialise heading from the current IMU |
 | `Q` / `E` | delta heading ∓ π/12 |
-| `F` | print motor temperatures |
-| Enter | toggle planner mode |
+| `H` | print motor temperatures |
+| Enter | toggle planner mode — **no planner is loaded in this bundle**, so it prints `Planner not loaded - cannot enable` and in the same tick clears `play` and snaps the reference back to frame 0, policy still armed (`keyboard_handler.hpp:462-472`) |
+
+**Lower case works for every key except `]`.** Both branches of the handler take
+either case — `keyboard_handler.hpp:307-308` and `:247-248` are each
+`case 'o': case 'O': stop_control = true;`, and the rest of the table is the same
+shape. `]` has no case to vary.
+
+**The temperature key is `H` here, not `F`.** This table describes the default
+`keyboard` interface, where `use_planner` starts false (`keyboard_handler.hpp:85`)
+and the temperature request is bound at `:318-319`. `F` is bound only inside the
+planner branch (`:256-257`), reached by pressing Enter; in this mode `F` does
+nothing. Under `--input-type manager` it is reversed, because `InterfaceManager`
+consumes stdin first: `F` is the temperature key (`interface_manager.hpp:155-160`,
+the `case 'f': case 'F': report_temperature_flag_ = true;` arm) and `H` is taken
+as decrease-left-hand-compliance (`interface_manager.hpp:124-129`) and never
+forwarded. `gamepad_manager` binds `F` the same way (`gamepad_manager.hpp:136-140`)
+but has no `h`/`H` case at all, so it does not intercept `H`.
+The runner's own comment at `g1_deploy_onnx_ref.cpp:3858` says
+"(F key)" and is wrong for the default interface. Either way the handler sits
+inside `case ProgramState::CONTROL`, so nothing prints until the policy is armed.
 
 `]` and `T` are two separate steps and both are required to track a motion.
 `]` moves the state machine into CONTROL, so the policy starts running at 50 Hz —
@@ -178,7 +198,11 @@ only key that sets `play`; it is also set by the gamepad and ZMQ interfaces, and
 nowhere else. A policy left armed but unplayed holds a still pose and looks like
 it is failing to track.
 
-In planner mode `W`/`S`/`A`/`D` drive, `1`–`8` pick a locomotion mode, and
+Planner mode is not reachable in this bundle: nothing it launches passes
+`--planner-file` (only `runner/deploy.sh` does, and its own banner comment says
+why it must not be run), so Enter takes the `!has_planner` branch above. For
+completeness, in planner mode `W`/`S`/`A`/`D` drive, `1`–`8` pick a locomotion
+mode, and
 ``R``/`` ` `` is the planner's own emergency stop (momentum reset), which is
 **not** the same thing as `O`.
 
@@ -193,9 +217,10 @@ wire is different.
 
 ```bash
 source env.sh
-bash drill.sh                      # deploy_dr, ~60 s, headless
+bash drill.sh                      # deploy_dr, ~45 s, headless
 bash drill.sh --policy no_dr       # the control policy
 bash drill.sh --viewer --hold 20   # watch it
+bash drill.sh --latency 60         # inject 60 ms of actuation latency
 ```
 
 Torque is applied exactly as the motor controller applies it, from the fields
@@ -206,6 +231,22 @@ tau = tau_ff + kp * (q_des - q) + kd * (dq_des - dq),   clipped to the motor lim
 ```
 
 so `kp = 0, kd = 8` goes limp here for the same reason it does on the robot.
+
+`~45 s` is the steady-state figure `drill.sh`'s own usage header quotes
+(`bash drill.sh   deploy_dr, headless, ~45 s`); the **first** run on a machine
+adds the TensorRT engine build on top, which is not in that 45 s. Nothing in
+this repo times the engine build, so budget for it rather than for a number.
+
+**`drill.sh` and `evaluate.sh` drive different G1 models, so their latency
+ladders are not one ladder.** The DDS rehearsal loads
+`sim/models/g1/scene_43dof.xml`, which includes `g1_29dof_with_hand.xml` and so
+carries 14 Dex3 hand joints and 1.05 kg of extra hand mass; the ONNX sweep loads
+`runner/g1/g1_29dof.xml`, whose hands are one rigid mesh per arm
+(`tools/mujoco_player.py:43-49`). The runner commands the same 29 body joints in
+both and never commands the Dex3 DoF, so what differs is hand mass, inertia and
+collision geometry — not the control. Counts, masses and the rest are in
+`sim/VENDOR_PATCHES.md` section 3. Read a `drill.sh --latency` number and an
+`evaluate.sh` latency number as two plants, not two points on one curve.
 
 A run looks like this — measured, `deploy_dr`, TensorRT 10.13, on
 `walk_arc_cw_stop_001__A047`, which is the clip `drill.sh` defaults to and the
@@ -340,7 +381,11 @@ unsupported G1 holds it — see `HARDWARE_RUNS.md`.
    `source env.sh` prints it. This is not a formality: measured on this bundle,
    the engine-vs-ONNX mean disagreement is **1.45e-06 at 10.13** and
    **1.10e-04 at 10.16** — systematically 76× worse at the wrong version. Run
-   `bash drill.sh --parity` on the machine you will deploy from.
+   `bash drill.sh --play --parity` on the machine you will deploy from.
+   `--play` is not optional here: `drill.sh` sends `T` only when it is given
+   (its `[ "$PLAY" -eq 1 ] && { sleep 1; printf 'T'; }` line), so `--parity`
+   alone compares the engine against a reference parked at frame 0 — a much
+   narrower input distribution than the 1.45e-06 above was measured over.
 9. Read `../README.md` **Limits**. In particular: these policies cannot perceive
    their own horizontal position — treat any deployment as open-loop in the
    horizontal plane.
