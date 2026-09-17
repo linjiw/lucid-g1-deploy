@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Check a deployment bundle the way the C++ runner will read it.
 
-    verify_deploy_bundle.py <bundle-dir> [--obs-config <path>] [--model <onnx>]
+    verify_deploy_bundle.py <bundle-dir> [--json]
 
-The runner has never been built in this repository, so "the bundle is fine" has
-until now been an assertion. This turns it into a measurement by re-implementing
-the runner's own parsers in Python, from its source, and running them over the
-bundle:
+"The bundle is fine" is otherwise an assertion. This turns it into a measurement
+by re-implementing the runner's own parsers in Python, from its source, and
+running them over the bundle:
 
 * ``ReadMetadata`` (motion_data_reader.hpp:933) needs a literal
   ``Body part indexes:`` line and regex-scans the FOLLOWING line for integers.
@@ -44,6 +43,19 @@ REQUIRED_CSVS = {
     "body_lin_vel.csv": 3,
     "body_ang_vel.csv": 3,
 }
+
+# The G1 this bundle deploys has 29 actuated joints, and that number is a
+# hardcoded stride in the runner -- g1_deploy_onnx_ref.cpp:772 walks the motion
+# joint arrays 29 at a time and never checks the file agrees. A clip converted
+# for the 23-DoF G1 (runner/g1/g1_23dof.xml ships here) or for the 43-DoF model
+# tools/convert_clip_for_deploy.py warns about would be read at the wrong stride
+# and silently reinterpreted. So the bundle checker asserts what the runner
+# assumes.
+EXPECTED_DOF = 29
+
+# The 290-wide observation terms are 29 dof x 10 frames, so a wrong DoF count
+# silently changes what the 1570 means as well.
+DOF10 = EXPECTED_DOF * 10
 
 
 def read_csv(path: Path) -> tuple[list[list[float]], list[str]]:
@@ -116,10 +128,29 @@ def check_motion(d: Path, problems: list[str]) -> dict:
             problems.append(
                 f"{d.name}/{name}: header has {len(header)} columns, rows have {width}"
             )
-        if coords > 1 and width % coords:
-            problems.append(
-                f"{d.name}/{name}: row width {width} is not divisible by {coords}"
-            )
+        if coords == 1:
+            # joint_pos.csv / joint_vel.csv: one column per actuated joint.
+            if width != EXPECTED_DOF:
+                problems.append(
+                    f"{d.name}/{name}: {width} columns, expected {EXPECTED_DOF} "
+                    f"(one per actuated joint). The runner strides these arrays "
+                    f"{EXPECTED_DOF} at a time without checking."
+                )
+        else:
+            # body_*.csv: coords per body, and the bodies are the ones
+            # metadata.txt declared -- ReadCSV3D divides by coords but never
+            # cross-checks the body count, so a file with the right divisibility
+            # and the wrong body count loads and means something else.
+            if width % coords:
+                problems.append(
+                    f"{d.name}/{name}: row width {width} is not divisible by {coords}"
+                )
+            elif idx and width != coords * len(idx):
+                problems.append(
+                    f"{d.name}/{name}: {width} columns = {width // coords} bodies, but "
+                    f"metadata.txt declares {len(idx)} body part indexes"
+                )
+        info.setdefault("widths", {})[name] = width
         frames[name] = len(rows)
     if len(set(frames.values())) > 1:
         problems.append(
@@ -155,6 +186,163 @@ def check_motion(d: Path, problems: list[str]) -> dict:
                     f"column -- the runner reads w = quat[0]"
                 )
     return info
+
+
+def check_joint_order(bundle: Path, report: dict, problems: list[str]) -> None:
+    """Re-run the measurement that caught the joint-order bug, every time.
+
+    Commit 04c56d2 found that tools/convert_clip_for_deploy.py was writing
+    clip.dof50 -- a MuJoCo-ordered array -- straight into joint_pos.csv, while
+    the runner reads that file as IsaacLab-ordered and permutes nothing. 580 of
+    the 1570 observation floats reached the policy shuffled, and every check in
+    this bundle still passed, because nothing compared joint VALUES against
+    anything.
+
+    The comparison that did find it needs no new data. A parity receipt names
+    the clip its golden observations were generated from, and its obs_layout
+    puts motion_joint_positions_10frame_step5 first, so observations[0][:29] is
+    frame 0 of that clip's joint_pos.csv expressed in policy space. If the CSV
+    is in the same space, the two agree to float noise. If someone re-runs the
+    converter and reintroduces the permutation, they disagree by ~1 rad.
+
+    Measured on the shipped bundle:
+
+        as shipped (both IsaacLab)      max |delta| 4.81e-07
+        pre-fix CSV (MuJoCo-ordered)    max |delta| 1.1476
+
+    Six orders of magnitude apart, so the threshold is not delicate.
+    """
+    par = bundle / "parity"
+    if not par.is_dir():
+        return
+    checked: list[dict] = []
+    for sub in sorted(p for p in par.iterdir() if p.is_dir()):
+        npz, rec = sub / "parity_vectors.npz", sub / "parity_receipt.json"
+        if not npz.is_file() or not rec.is_file():
+            continue
+        r = json.loads(rec.read_text())
+        # The receipt records the absolute path of the clip on the training
+        # machine; the motion directory here is named after its stem.
+        stem = Path(r.get("clip", "")).stem
+        motion = bundle / "motions" / stem
+        csv = motion / "joint_pos.csv"
+        if not csv.is_file():
+            # Not a problem: a receipt may name a clip this bundle does not ship.
+            checked.append({"arm": sub.name, "clip": stem, "status": "clip not in motions/"})
+            continue
+        layout = r.get("obs_layout") or []
+        if not layout or layout[0][0] != "motion_joint_positions_10frame_step5":
+            problems.append(
+                f"parity/{sub.name}: obs_layout does not start with "
+                f"motion_joint_positions_10frame_step5, so observations[0][:{EXPECTED_DOF}] "
+                f"is not frame 0 of the reference and this check cannot run"
+            )
+            continue
+        obs0 = np.load(npz)["observations"][0][:EXPECTED_DOF]
+        rows, _ = read_csv(csv)
+        row0 = np.asarray(rows[0])
+        if row0.shape != obs0.shape:
+            problems.append(
+                f"{stem}/joint_pos.csv: row 0 has {row0.size} values, golden "
+                f"observation has {obs0.size}"
+            )
+            continue
+        delta = float(np.abs(obs0 - row0).max())
+        checked.append({"arm": sub.name, "clip": stem, "max_abs_delta": delta})
+        if delta > 1e-4:
+            permuted = _permutation_delta(bundle, obs0, row0)
+            hint = ""
+            if permuted is not None and permuted < 1e-4:
+                hint = (
+                    " -- and it DOES match to "
+                    f"{permuted:.2e} after gathering by the runner's "
+                    "mujoco_to_isaaclab, i.e. the CSV is in MuJoCo order where the "
+                    "runner reads IsaacLab. This is exactly the bug 04c56d2 fixed; "
+                    "re-check tools/convert_clip_for_deploy.py."
+                )
+            problems.append(
+                f"{stem}/joint_pos.csv row 0 disagrees with parity/{sub.name} golden "
+                f"observations[0][:{EXPECTED_DOF}] by {delta:.4g} rad (expected < 1e-4)"
+                f"{hint}"
+            )
+    report["joint_order"] = checked
+
+
+def _permutation_delta(bundle: Path, obs0, row0):
+    """How well the CSV would match if it were MuJoCo-ordered. None if unknown.
+
+    The gather is ``mujoco_to_isaaclab``, and the name is a trap worth spelling
+    out, because commit d49ba85 exists because someone already fell into it.
+    policy_parameters.hpp names its tables by the space they are INDEXED in, not
+    the space they convert to: ``mujoco_to_isaaclab`` is IsaacLab order expressed
+    in MuJoCo indices, so ``isaaclab[i] = mujoco[mujoco_to_isaaclab[i]]`` -- it
+    is the one that turns a MuJoCo-ordered row into an IsaacLab-ordered one.
+    (tools/mujoco_player.py's ISAAC_TO_MJ is this same array under the opposite
+    name; config/deploy_metadata.json documents the clash.)
+
+    Measured both ways on the pre-fix CSV, against deploy_dr's golden obs:
+
+        gathered by mujoco_to_isaaclab   4.81e-07   <- the right one
+        gathered by isaaclab_to_mujoco   1.0256
+
+    Parsed out of the runner's own header rather than copied, for the reason
+    tools/check_motion_start.py gives: a table that drifts from the runner's is
+    worse than no table.
+    """
+    src = bundle / "runner/src/g1/g1_deploy_onnx_ref/include/policy_parameters.hpp"
+    if not src.is_file():
+        return None
+    block = re.search(
+        r"const std::array<int, 29> mujoco_to_isaaclab = \{(.*?)\};", src.read_text(), re.S
+    )
+    if not block:
+        return None
+    perm = [int(m) for m in re.findall(r"-?\d+", block[1])]
+    if sorted(perm) != list(range(EXPECTED_DOF)):
+        return None
+    return float(np.abs(obs0 - row0[perm]).max())
+
+
+def check_joint_order_tables(bundle: Path, report: dict, problems: list[str]) -> None:
+    """config/deploy_metadata.json publishes the two joint-order tables. Check them.
+
+    The file states they are "byte-identical to the same-named tables in
+    policy_parameters.hpp". Nothing read the file, so that claim could not be
+    re-checked -- and commit d49ba85 is the proof it needed checking: the
+    published array had been carrying its own inverse's name.
+    """
+    meta = bundle / "config" / "deploy_metadata.json"
+    src = bundle / "runner/src/g1/g1_deploy_onnx_ref/include/policy_parameters.hpp"
+    if not meta.is_file() or not src.is_file():
+        return
+    text = src.read_text()
+    published = (json.loads(meta.read_text()).get("joint_order") or {})
+    seen: dict = {}
+    for name in ("isaaclab_to_mujoco", "mujoco_to_isaaclab"):
+        block = re.search(
+            rf"const std::array<int, 29> {name} = \{{(.*?)\}};", text, re.S
+        )
+        if not block:
+            problems.append(f"policy_parameters.hpp: no {name} table to check against")
+            continue
+        runner = [int(m) for m in re.findall(r"-?\d+", block[1])]
+        want = published.get(name)
+        if want is None:
+            problems.append(f"config/deploy_metadata.json: does not publish {name}")
+        elif list(want) != runner:
+            problems.append(
+                f"config/deploy_metadata.json {name} has drifted from "
+                f"policy_parameters.hpp -- published {list(want)[:6]}..., "
+                f"runner has {runner[:6]}...  (this is the d49ba85 failure mode)"
+            )
+        seen[name] = runner
+    a2b, b2a = seen.get("isaaclab_to_mujoco"), seen.get("mujoco_to_isaaclab")
+    if a2b and b2a and [a2b[i] for i in b2a] != list(range(EXPECTED_DOF)):
+        problems.append(
+            "policy_parameters.hpp: isaaclab_to_mujoco and mujoco_to_isaaclab are not "
+            "inverses of each other, which deploy_metadata.json asserts they are"
+        )
+    report["joint_order_tables"] = "checked against policy_parameters.hpp" if seen else "skipped"
 
 
 def main(argv=None) -> int:
@@ -195,13 +383,13 @@ def main(argv=None) -> int:
         ]
         report["obs_terms"] = names
         widths = {
-            "motion_joint_positions_10frame_step5": 290,
-            "motion_joint_velocities_10frame_step5": 290,
+            "motion_joint_positions_10frame_step5": DOF10,
+            "motion_joint_velocities_10frame_step5": DOF10,
             "motion_anchor_orientation_10frame_step5": 60,
             "his_base_angular_velocity_10frame_step1": 30,
-            "his_body_joint_positions_10frame_step1": 290,
-            "his_body_joint_velocities_10frame_step1": 290,
-            "his_last_actions_10frame_step1": 290,
+            "his_body_joint_positions_10frame_step1": DOF10,
+            "his_body_joint_velocities_10frame_step1": DOF10,
+            "his_last_actions_10frame_step1": DOF10,
             "his_gravity_dir_10frame_step1": 30,
         }
         total = sum(widths.get(n, 0) for n in names)
@@ -224,6 +412,30 @@ def main(argv=None) -> int:
     if not motions:
         problems.append("no motions/ subdirectories")
     report["motions"] = [check_motion(m, problems) for m in motions]
+
+    # A sibling of motions/ holding reference clips is a loaded gun. The joint-order
+    # fix (04c56d2) left one behind here as motions.mujoco_order.bak/ -- three clips
+    # with identical filenames and headers to the good ones, differing only in
+    # column order, which is invisible to `ls`, `head -1` and `diff <(head -1) ...`.
+    # Nothing globs it, so it is safe until a human reads ".bak" as "the good backup"
+    # and moves it into place, or `scp -r` carries it to the deploy machine.
+    strays = sorted(
+        d.name
+        for d in a.bundle.iterdir()
+        if d.is_dir() and d.name != "motions" and d.name.startswith("motions")
+    )
+    if strays:
+        problems.append(
+            "reference clips outside motions/: "
+            + ", ".join(strays)
+            + " -- delete them. The pre-fix, MuJoCo-ordered CSVs are in git history "
+            "(`git show a30501f:motions/<clip>/joint_pos.csv`) if they are ever wanted; "
+            "a copy on disk one directory name away from the corrected clips is not a "
+            "backup, it is the 04c56d2 bug waiting to be restored by hand."
+        )
+
+    check_joint_order(a.bundle, report, problems)
+    check_joint_order_tables(a.bundle, report, problems)
 
     # --- parity vectors -----------------------------------------------------
     par = a.bundle / "parity"
@@ -274,6 +486,12 @@ def main(argv=None) -> int:
             print(
                 f"  parity  {p['arm']:12s} {p['steps']} steps x {p['obs_dim']}  onnx {p['onnx_sha256']}"
             )
+        for j in report.get("joint_order", []):
+            d = j.get("max_abs_delta")
+            verdict = j.get("status") if d is None else f"max |delta| {d:.2e} rad vs golden obs"
+            print(f"  joints  {j['arm']:12s} {j['clip']:44s} {verdict}")
+        if report.get("joint_order_tables"):
+            print(f"  tables  deploy_metadata.json {report['joint_order_tables']}")
         if problems:
             print("\nPROBLEMS:")
             for p in problems:

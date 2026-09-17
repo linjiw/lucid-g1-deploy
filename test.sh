@@ -20,7 +20,7 @@ hdr()  { echo; echo "== $* =="; }
 
 hdr "1/8  bundle parses under the runner's own reading rules"
 if $PY "$HERE/tools/verify_deploy_bundle.py" "$HERE" >/tmp/lucid_t1.log 2>&1; then
-  ok "metadata, CSVs, quaternion order, frame counts, parity traces"
+  ok "metadata, CSVs, joint count + order, quaternion order, frame counts, parity"
 else
   bad "see /tmp/lucid_t1.log"; sed 's/^/        /' /tmp/lucid_t1.log | tail -8
 fi
