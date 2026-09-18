@@ -41,8 +41,9 @@ hdr "1/8  bundle parses under the runner's own reading rules"
 # parity/deploy_dr/parity_receipt.json:5 and parity/no_dr/parity_receipt.json:5);
 # crouch_idle_004__A246 and walk_ff_stop_270_R_very_slow_001__A445_M are checked
 # for width, frame count and quaternion norm, but not for joint VALUES.
-if $PY "$HERE/tools/verify_deploy_bundle.py" "$HERE" >/tmp/lucid_t1.log 2>&1; then
-  ok "metadata, CSVs, joint order vs golden obs (1 of 3 clips), quaternions, frames, hashes"
+if $PY "$HERE/tools/verify_deploy_bundle.py" "$HERE" >/tmp/lucid_t1.log 2>&1 \
+   && $PY "$HERE/tools/four_motion.py" check >>/tmp/lucid_t1.log 2>&1; then
+  ok "metadata, CSVs, legacy golden order, all four new joint-value sequences, frames, hashes"
 else
   bad "see /tmp/lucid_t1.log"; sed 's/^/        /' /tmp/lucid_t1.log | tail -8
 fi
@@ -95,8 +96,9 @@ for d in sorted(glob.glob(f"{here}/parity/*/")):
     rec = json.load(open(os.path.join(d, "parity_receipt.json")))
     npz = np.load(os.path.join(d, "parity_vectors.npz"))
     obs, act = npz["observations"], npz["actions"]
-    cand = [p for p in glob.glob(f"{here}/policies/*.onnx")
-            if os.path.basename(d.rstrip("/")).split("_s")[0] in os.path.basename(p)]
+    tag = os.path.basename(d.rstrip("/"))
+    exact = os.path.join(here, "policies", f"{tag}_s8600_g1.onnx")
+    cand = [exact] if os.path.isfile(exact) else []
     if not cand:
         print(f"        {os.path.basename(d.rstrip('/'))}: no matching policy"); rc = 1; continue
     s = ort.InferenceSession(cand[0], providers=["CPUExecutionProvider"])
@@ -234,9 +236,9 @@ Everything checked here passed. Note what is still NOT established:
     see docs/HARDWARE_RUNS.md. No policy has ever been armed on hardware.
   * that the fixed stand holds an unsupported G1. In simulation it does not --
     see docs/DEPLOY_SEQUENCE.md.
-  * that a policy survives the step from default_angles onto its reference at
-    the moment you press ']'. Check 8 measures that step; on the clips shipped
-    here it is large, and in the rehearsal the policy goes down within seconds.
+  * the behavior of each policy through the full deployment sequence. Check 8
+    measures the initial pose mismatch. For the latest four-motion pair, see
+    the separate measured rehearsals in docs/FOUR_MOTION_DEPLOY.md.
 
 Value-level parity IS established, but not by this script: run
 `bash drill.sh --play --parity`, which drives the runner against the MuJoCo robot

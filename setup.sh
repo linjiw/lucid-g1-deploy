@@ -173,26 +173,27 @@ VENV="$HERE/.venv"
 # under mujoco, say -- is now torn down and reinstalled on every later run and
 # still fails; the pip output and the import error are the thing to read, not a
 # re-run.
-VENV_IMPORTS='import numpy, onnxruntime, yaml, joblib, scipy, mujoco'
+VENV_IMPORTS='import numpy, onnxruntime, yaml, joblib, scipy, mujoco, imageio, wandb'
 venv_ok() { [ -x "$VENV/bin/python" ] && "$VENV/bin/python" -c "$VENV_IMPORTS" >/dev/null 2>&1; }
 if [ "$DRY" -eq 0 ] && ! venv_ok; then
   rm -rf "$VENV"
   python3 -m venv "$VENV"
   "$VENV/bin/pip" -q install --upgrade pip
-  "$VENV/bin/pip" -q install numpy onnxruntime pyyaml joblib scipy mujoco
+  "$VENV/bin/pip" -q install numpy onnxruntime pyyaml joblib scipy mujoco \
+    "imageio[ffmpeg]" "wandb==0.29.0"
 fi
 if [ "$DRY" -eq 0 ]; then
   if venv_ok; then
     "$VENV/bin/python" - <<'PYCHK'
-import numpy, onnxruntime, mujoco
+import numpy, onnxruntime, mujoco, imageio, wandb
 print(f"  numpy {numpy.__version__} · onnxruntime {onnxruntime.__version__} · mujoco {mujoco.__version__}")
 PYCHK
   else
-    echo "  ⚠ .venv cannot import numpy/onnxruntime/yaml/joblib/scipy/mujoco even"
+    echo "  ⚠ .venv cannot import the runtime/video/logging dependencies even"
     echo "    after a fresh create+install. pip itself succeeded -- set -e would have"
     echo "    stopped the script otherwise -- so this is an import-time failure, not a"
     echo "    download one, and re-running setup.sh will reproduce it. See it with:"
-    echo "      .venv/bin/python -c 'import numpy, onnxruntime, yaml, joblib, scipy, mujoco'"
+    echo "      .venv/bin/python -c '$VENV_IMPORTS'"
   fi
 fi
 

@@ -6,6 +6,8 @@
 #   bash drill.sh --viewer               show the MuJoCo window
 #   bash drill.sh --play                 ALSO play the clip ('T'), not just arm the policy
 #   bash drill.sh --latency 60           inject 60 ms of actuation latency at the robot
+#   bash drill.sh --out results/my-drill  choose a fresh output directory
+#   bash drill.sh --stand 2 --stop-wait 2  seconds before control and after stop
 #   bash drill.sh --hold 12              stay in CONTROL for 12 s before the stop
 #   bash drill.sh --motion <name>        rehearse one clip; it becomes motion index 0
 #   bash drill.sh --all-motions          hand the runner all three (index 0 is readdir order)
@@ -96,6 +98,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POLICY=deploy_dr
 IFACE=lo
 HOLD=10
+STAND_S=6
+STOP_S=8
+OUT=""
 VIEWER=0
 PLAY=0
 LATENCY=0
@@ -115,6 +120,9 @@ while [ $# -gt 0 ]; do case "$1" in
   --policy) POLICY="$2"; shift 2 ;;
   --iface)  IFACE="$2"; shift 2 ;;
   --hold)   HOLD="$2"; shift 2 ;;
+  --out) OUT="$2"; shift 2 ;;
+  --stand) STAND_S="$2"; shift 2 ;;
+  --stop-wait) STOP_S="$2"; shift 2 ;;
   --viewer) VIEWER=1; shift ;;
   --play)   PLAY=1; shift ;;
   --latency) LATENCY="$2"; shift 2 ;;
@@ -192,8 +200,9 @@ SIMPY="$HERE/.venv-sim/bin/python"
 # before every run on the robot) left exactly one record and nothing to compare
 # it against. 'latest' is added because the paths printed below are how the
 # parity output and the sim log are found.
-LOGS="$HERE/results/drill/$(date +%Y%m%d-%H%M%S)-$POLICY${MOTION:+-$MOTION}"
-mkdir -p "$LOGS"
+LOGS="${OUT:-$HERE/results/drill/$(date +%Y%m%d-%H%M%S)-$POLICY${MOTION:+-$MOTION}}"
+mkdir -p "$LOGS" "$HERE/results/drill"
+LOGS="$(cd "$LOGS" && pwd)"
 ln -sfn "$LOGS" "$HERE/results/drill/latest"
 
 MOTIONS_DIR="$HERE/motions"
@@ -212,7 +221,6 @@ done
 
 SIM_LOG="$LOGS/sim.log"; RUN_LOG="$LOGS/runner.log"
 : >"$RUN_LOG"; : >"$SIM_LOG"
-STAND_S=6; STOP_S=8   # how long to hold the fixed stand, and to watch after the stop
 BOOT_TIMEOUT=180      # the runner loads motions and a TensorRT engine before INIT
 
 echo "======================================================================"
@@ -222,7 +230,7 @@ echo "  init (wait for the runner) -> stand $STAND_S s -> policy $HOLD s -> stop
 echo "  motion        ${MOTION:-all three (index 0 is readdir order -- unpredictable)}"
 echo "  elastic band  $( [ "$BAND" -eq 1 ] && echo 'ON through init and stand, released when the policy starts' || echo 'OFF -- the robot will sit down during INIT, see docs' )"
 if [ "$PLAY" -eq 1 ]; then
-  echo "  playback      ON -- 'T' sent 1 s after ']', the clip runs to its end"
+  echo "  playback      ON -- 'T' sent after CONTROL is confirmed, the clip runs to its end"
 else
   echo "  playback      OFF -- ']' arms the policy but the reference stays parked at"
   echo "                frame 0. Pass --play to send 'T' and actually track the clip."
@@ -237,7 +245,7 @@ echo "        $RUN_LOG"
 echo "        results/drill/latest -> $(basename "$LOGS")"
 echo
 
-sim_args=(--iface "$IFACE" --status-hz 2 --latency-ms "$LATENCY")
+sim_args=(--iface "$IFACE" --status-hz 10 --latency-ms "$LATENCY")
 [ -n "$RECORD" ] && sim_args+=(--record "$RECORD")
 [ "$BAND" -eq 1 ] && sim_args+=(--band)
 [ "$VIEWER" -eq 1 ] || sim_args+=(--headless)
@@ -270,15 +278,17 @@ parity_args=()
 if [ "$PARITY" -eq 1 ]; then
   rm -rf "$LOGS/csv"; mkdir -p "$LOGS/csv"
   parity_args=(--policy-input-logfile "$LOGS/obs.csv"
+               --target-motion-logfile "$LOGS/target.csv"
                --enable-csv-logs --logs-dir "$LOGS/csv")
   echo "    parity logging on -> $LOGS/obs.csv and $LOGS/csv/"
 fi
 
 echo "[2] starting the runner (loads motions, then the TensorRT engine)"
 {
-  await_log "Init Done" "$BOOT_TIMEOUT" || true
+  await_log "Init Done" "$BOOT_TIMEOUT" || exit 1
   sleep "$STAND_S"; printf ']'
-  [ "$PLAY" -eq 1 ] && { sleep 1; printf 'T'; }
+  await_log "transitioning to CONTROL" 10 || exit 1
+  [ "$PLAY" -eq 1 ] && printf 'T'
   sleep "$HOLD";    printf 'O'
   sleep "$STOP_S"
 } | "$RUNNER" "$IFACE" "$ONNX" "$MOTIONS_DIR/" \
@@ -318,12 +328,14 @@ echo "======================================================================"
 # The keyboard interface prints nothing when 'O' is pressed -- it only sets
 # stop_control, which the control loop turns into operator_state.stop. The
 # evidence that the stop landed is the shutdown pair, plus kd=8 at the robot.
+MISSING=0
 for pat in "Dimension match" "Init Done" \
            "transitioning to CONTROL" "Stopping G1Deploy" "Stop$"; do
   if grep -qE "$pat" "$RUN_LOG"; then
     printf "  reached   %s\n" "$(grep -ohE "$pat.*" "$RUN_LOG" | head -1 | cut -c1-64)"
   else
     printf "  MISSING   %s\n" "$pat"
+    MISSING=$((MISSING + 1))
   fi
 done
 
@@ -337,6 +349,7 @@ if [ "$PLAY" -eq 1 ]; then
     fi
   else
     printf "  MISSING   'T' was sent but the runner never reported playback\n"
+    MISSING=$((MISSING + 1))
   fi
 else
   printf "  skipped   reference playback ('T') -- not sent without --play\n"
@@ -447,9 +460,10 @@ if [ "$PARITY" -eq 1 ]; then
   ACT=$(find "$LOGS/csv" -name "action.csv" | head -1)
   if [ -s "$LOGS/obs.csv" ] && [ -n "$ACT" ]; then
     "${PYTHON:-python3}" "$HERE/tools/check_runtime_parity.py" \
-      --obs "$LOGS/obs.csv" --actions "$ACT" --onnx "$ONNX" || true
+      --obs "$LOGS/obs.csv" --actions "$ACT" --onnx "$ONNX" || MISSING=$((MISSING + 1))
   else
     echo "  no parity logs were written (obs.csv empty or action.csv missing)"
+    MISSING=$((MISSING + 1))
   fi
 fi
 
@@ -470,3 +484,5 @@ cat <<'EOF'
 
   Full sequence, hardware safety and the wiring: docs/DEPLOY_SEQUENCE.md
 EOF
+
+[ "$MISSING" -eq 0 ]

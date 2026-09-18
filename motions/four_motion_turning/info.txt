@@ -1,0 +1,63 @@
+{
+  "kind": "lucid_deploy_motion_csv",
+  "clip": "clips/four_motion_turning.pkl",
+  "name": "walk_arc_cw_stop_001__A047",
+  "frames": 432,
+  "duration_s": 8.64,
+  "fps": 50,
+  "source_fps": 30,
+  "body_names": [
+    "pelvis",
+    "left_hip_roll_link",
+    "left_knee_link",
+    "left_ankle_roll_link",
+    "right_hip_roll_link",
+    "right_knee_link",
+    "right_ankle_roll_link",
+    "torso_link",
+    "left_shoulder_roll_link",
+    "left_elbow_link",
+    "left_wrist_yaw_link",
+    "right_shoulder_roll_link",
+    "right_elbow_link",
+    "right_wrist_yaw_link"
+  ],
+  "body_ids_in_model": [
+    1,
+    3,
+    5,
+    7,
+    9,
+    11,
+    13,
+    16,
+    18,
+    20,
+    23,
+    25,
+    27,
+    30
+  ],
+  "metadata_body_part_indexes": [
+    0,
+    4,
+    10,
+    18,
+    5,
+    11,
+    19,
+    9,
+    16,
+    22,
+    28,
+    17,
+    23,
+    29
+  ],
+  "model": "runner/g1/g1_29dof.xml",
+  "quaternion_convention": "wxyz",
+  "quaternion_convention_source": "motion_data_reader.hpp:272 declares [timestep][body_id][wxyz]; math_utils.hpp:411 reads w = quat[0]",
+  "not_verified": [
+    "that the runner's C++ MotionDataReader parses these into the same numbers"
+  ]
+}

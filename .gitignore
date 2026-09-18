@@ -1,8 +1,8 @@
 # Built by setup.sh / build.sh on each machine. Never committed: they are
 # machine-specific, and a TensorRT engine built elsewhere fails at robot-startup
 # time, which is the worst moment to discover it.
-.venv/
-.venv-sim/
+.venv
+.venv-sim
 .build/
 runner/target/
 runner/build/

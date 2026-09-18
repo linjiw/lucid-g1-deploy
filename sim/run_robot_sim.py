@@ -300,10 +300,6 @@ def main() -> int:
         print("  pose. That stands in for the gantry, harness or hands that must")
         print("  hold a real G1 during bring-up -- it is not a physics result.")
     print("=" * 70)
-    # Absolute start time, so a driver script can align the runner's log
-    # (which has its own clock) with the t= values in the status lines.
-    print(f"  [sim] EVENT epoch {time.time():.6f}", flush=True)
-
     # NOTE: do NOT call init_channel() here. BaseSimulator.__init__ calls
     # ChannelFactoryInitialize itself, and ChannelFactory is a singleton: a second
     # Init on the same domain id fails and prints "create domain error", which
@@ -352,6 +348,10 @@ def main() -> int:
               f"{env.elastic_band.point.round(3).tolist()} (the standing pose)",
               flush=True)
     t0 = time.monotonic()
+    # Match the origin of the status-line clock. Printing this before simulator
+    # construction shifts every phase by its startup time and can incorrectly
+    # count the post-stop collapse as a policy failure.
+    print(f"  [sim] EVENT epoch {time.time():.6f}", flush=True)
     last_status = 0.0
     seen_cmd = False
     policy_running = False

@@ -37,7 +37,7 @@ https://github.com/NVIDIA/GR00T-WholeBodyControl
   sim/wbc_configs/ the whole-body-control config, ROBOT_SCENE repointed only
 
   Note: the upstream repository is dual-licensed, with model WEIGHTS under the
-  NVIDIA Open Model License. No upstream weights are redistributed here. The two
+  NVIDIA Open Model License. No upstream weights are redistributed here. The four
   policies in policies/ were trained from scratch in this project.
 
 --------------------------------------------------------------------------------
@@ -88,5 +88,5 @@ https://github.com/eclipse-cyclonedds/cyclonedds
 --------------------------------------------------------------------------------
 Everything else in this repository -- the setup, build, test, evaluation and
 drill scripts, the tools/, the docs/, the observation config, the converted
-reference motions and the two exported policies -- is original to this project
+reference motions and the exported policies -- is original to this project
 and is released under the Apache License 2.0 (see LICENSE).

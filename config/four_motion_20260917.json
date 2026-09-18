@@ -1,0 +1,257 @@
+{
+  "group": "four_motion_deploy_20260917",
+  "framework": "SONIC",
+  "training_seed": 8600,
+  "checkpoint_iteration": 4000,
+  "source_commit": "25aa46fbe84b3101252bd808cddc58e48f19d1fa",
+  "source_plan_sha256": "7f3536198130bc11f4e1c393c7b1e1a55e09907f1da0be930359242aa228e1e1",
+  "direct_conditions": {
+    "nominal": {
+      "lam": 0,
+      "seeds": [
+        8700
+      ]
+    },
+    "training_range_approximation": {
+      "lam": 1,
+      "seeds": [
+        8700,
+        8701,
+        8702
+      ]
+    }
+  },
+  "direct_horizon": "Full original clip, no early termination or automatic resets",
+  "dds_condition": "MuJoCo nominal physics; actual C++ TensorRT/DDS path; supported INIT/stand, support released at controller activation; ] then T",
+  "scope": "Only latest four-motion pair; older policy sets are excluded",
+  "policies": {
+    "fixed_dr": {
+      "path": "policies/four_motion_fixed_dr_s8600_g1.onnx",
+      "sha256": "7be5c665980de616a4a22d5c36d9c0f4d00e74d44e32c41ead3963b9a96c855b",
+      "checkpoint": "fixed/final_checkpoint.pt",
+      "checkpoint_sha256": "0c5f308f3f8831a8abab38efa1576ba6bfe9ecf70f8d429de291728c7cc8942c",
+      "training_dr": "standard six-channel fixed lambda=1"
+    },
+    "no_dr": {
+      "path": "policies/four_motion_no_dr_s8600_g1.onnx",
+      "sha256": "222761c5e35901492c8a4b2dd5f229e0ddad7038d3e68c598d7c4bee4a0bbc64",
+      "checkpoint": "off/final_checkpoint.pt",
+      "checkpoint_sha256": "974740f82d3f93f6e1124b1f10fb9556d6451bd2d5649a8289ccdcffcd732e21",
+      "training_dr": "lambda=0"
+    }
+  },
+  "motions": [
+    {
+      "family": "01_walking",
+      "key": "walk_ff_start_270_R_slow_002__A444",
+      "path": "clips/four_motion_walking.pkl",
+      "sha256": "0b0b9f83f6ee30b1f588066a27e796eac28f2fe25a37960cc50bb01e70251e59",
+      "duration": 9.7,
+      "partition": "adaptation",
+      "display_seconds": 6,
+      "alias": "walking",
+      "clip": "clips/four_motion_walking.pkl",
+      "deploy_motion": "motions/four_motion_walking",
+      "csv_sha256": {
+        "body_pos.csv": "2e2fb4b636dd577d37ccc677b2f91cf767e21e38d5b74530f9ead1285bb75ffb",
+        "metadata.txt": "e693d41efda08098ff88a9843ec4fa31b4c41d6553e1dc80a6b0d5394537b713",
+        "body_lin_vel.csv": "ff3107ff4124faa938de81f5ae79ae7b89d3bdf3f3a785ee22c77e8c8d2e9dac",
+        "body_quat.csv": "c78f42a0b240513b6f66181aab508ad716efe628709d823942f75619a2012df3",
+        "joint_vel.csv": "f3ecbf0a70340921334011fbbca22e94f5f82ea495f711e9ccb0bb7786bb3c0a",
+        "body_ang_vel.csv": "2f199de60257582749ab4f18bf3cc386a08fe5e12e376aed7a0c858ed22005bb",
+        "joint_pos.csv": "3a57dffbdfba55a2dce9f01bed2c14dc379f75cd3f1a89f207155e80bc1e0548"
+      },
+      "parser_audit": {
+        "name": "four_motion_walking",
+        "body_part_indexes": [
+          0,
+          4,
+          10,
+          18,
+          5,
+          11,
+          19,
+          9,
+          16,
+          22,
+          28,
+          17,
+          23,
+          29
+        ],
+        "metadata_timesteps": 484,
+        "frames": {
+          "joint_pos.csv": 484,
+          "joint_vel.csv": 484,
+          "body_pos.csv": 484,
+          "body_quat.csv": 484,
+          "body_lin_vel.csv": 484,
+          "body_ang_vel.csv": 484
+        },
+        "max_quat_norm_error": 8.069273255140175e-07
+      }
+    },
+    {
+      "family": "02_turning",
+      "key": "walk_arc_cw_stop_001__A047",
+      "path": "clips/four_motion_turning.pkl",
+      "sha256": "f004a72a7fa9f35254dfbc224bec87f4a4d913333f0ccba2afad2cca155e7948",
+      "duration": 8.666666666666666,
+      "partition": "adaptation",
+      "display_seconds": 6,
+      "alias": "turning",
+      "clip": "clips/four_motion_turning.pkl",
+      "deploy_motion": "motions/four_motion_turning",
+      "csv_sha256": {
+        "body_pos.csv": "7f99f2bf028866504b589c8ae369fc60a559ccfdbaac66a278593686b97862a7",
+        "metadata.txt": "e1d5c82349fd177288dfe8aed72766b5f1dfe201ecafb815dcb7442645328a46",
+        "body_lin_vel.csv": "5d06b4025b54ac9fcb3469075c9cc0d6f687288d5ea24bc5781b26ce8d1cef5f",
+        "body_quat.csv": "052c816a63e9cab0674652bba1e54d429d2e6779b2c8c8ef5c0690db8eac7aa3",
+        "joint_vel.csv": "09677c8d1242828a4c91808cb88ea4a4686d661ee93315a419ddf921c91450a1",
+        "body_ang_vel.csv": "50bfd4ea3519a4f6c5181182acf9237213506cdb602eb6f38f77f1e7fffc0c5e",
+        "joint_pos.csv": "2a06fb196d88d891a85e50bd7c8c75aed386e306a36dffa12610f837ed89beb2"
+      },
+      "parser_audit": {
+        "name": "four_motion_turning",
+        "body_part_indexes": [
+          0,
+          4,
+          10,
+          18,
+          5,
+          11,
+          19,
+          9,
+          16,
+          22,
+          28,
+          17,
+          23,
+          29
+        ],
+        "metadata_timesteps": 432,
+        "frames": {
+          "joint_pos.csv": 432,
+          "joint_vel.csv": 432,
+          "body_pos.csv": 432,
+          "body_quat.csv": 432,
+          "body_lin_vel.csv": 432,
+          "body_ang_vel.csv": 432
+        },
+        "max_quat_norm_error": 8.087313271287755e-07
+      }
+    },
+    {
+      "family": "03_squatting",
+      "key": "crouch_idle_004__A246",
+      "path": "clips/four_motion_crouch_hold.pkl",
+      "sha256": "afa729970206b85b473328bff2b3cdcc8b23a6498d5247d4be167de8eca9d367",
+      "duration": 8.133333333333333,
+      "partition": "adaptation",
+      "display_seconds": 6,
+      "alias": "crouch_hold",
+      "clip": "clips/four_motion_crouch_hold.pkl",
+      "deploy_motion": "motions/four_motion_crouch_hold",
+      "csv_sha256": {
+        "body_pos.csv": "e5ef34f7c8de816f52bb24526440ffa3e9096a2c7917bb25da803510da8c4a8b",
+        "metadata.txt": "01ca54af9e28728c55286557a17ea54b9b6061735b38ece0b8831ce6974f3dec",
+        "body_lin_vel.csv": "ea5986c6dfb49640aa47a7b116496f46a2932291e16ac2fde14a1fe89da2de5d",
+        "body_quat.csv": "9bca5b8c5e46ac4ec1e8726f192b032584a0163b188c7eb6fc716f2e4785539b",
+        "joint_vel.csv": "c5d2e7bf88c25c1bd3ec5c12494d46962c659e4421350d07cbbd059428021e56",
+        "body_ang_vel.csv": "d9c3a08f975cd58c89a89c43c22efddd0ef7d55d8397a85fb738701ce1880777",
+        "joint_pos.csv": "f8771d53e335ad0db9766adcbf1a0862b051b264938c7b199104b255d4fda593"
+      },
+      "parser_audit": {
+        "name": "four_motion_crouch_hold",
+        "body_part_indexes": [
+          0,
+          4,
+          10,
+          18,
+          5,
+          11,
+          19,
+          9,
+          16,
+          22,
+          28,
+          17,
+          23,
+          29
+        ],
+        "metadata_timesteps": 406,
+        "frames": {
+          "joint_pos.csv": 406,
+          "joint_vel.csv": 406,
+          "body_pos.csv": 406,
+          "body_quat.csv": 406,
+          "body_lin_vel.csv": 406,
+          "body_ang_vel.csv": 406
+        },
+        "max_quat_norm_error": 8.386731484844034e-07
+      }
+    },
+    {
+      "family": "04_side_stepping",
+      "key": "walk_sideway_left_loop_004__A031",
+      "path": "clips/four_motion_side_stepping.pkl",
+      "sha256": "081f5dfa3d0f9f3da449a31f1fedba433e4b0fa99bb9137cb9c13e59b6732f51",
+      "duration": 8.466666666666667,
+      "partition": "adaptation",
+      "display_seconds": 6,
+      "alias": "side_stepping",
+      "clip": "clips/four_motion_side_stepping.pkl",
+      "deploy_motion": "motions/four_motion_side_stepping",
+      "csv_sha256": {
+        "body_pos.csv": "5934deeefb4475ea4b93ddd606d38afc3aaa2455f07fa65af0295d9099cc3df7",
+        "metadata.txt": "700d383622289428db184017a7a30cebeb6234fbfae09857de71acf5536608e3",
+        "body_lin_vel.csv": "6f1d092483fcac39fcb812b027f49426496ff25ef3ecb36a6535c9cc8e68abdc",
+        "body_quat.csv": "36842127d75d367c514b86e4b94fc7a81b12dfff82c42ce9ee69e08aa1fa5509",
+        "joint_vel.csv": "02e373757ece79ffc5e4e4cd4dbaa4c2c61913ba24eb7daf7b2e7e895543a6a7",
+        "body_ang_vel.csv": "a362555b341de907a7cb8e8cb7c4cda849a79b803a800a3f7e0566a44700603f",
+        "joint_pos.csv": "c70850203ec1e63d833441b85432adb85b75747d068f02cf33445c0397ad4436"
+      },
+      "parser_audit": {
+        "name": "four_motion_side_stepping",
+        "body_part_indexes": [
+          0,
+          4,
+          10,
+          18,
+          5,
+          11,
+          19,
+          9,
+          16,
+          22,
+          28,
+          17,
+          23,
+          29
+        ],
+        "metadata_timesteps": 422,
+        "frames": {
+          "joint_pos.csv": 422,
+          "joint_vel.csv": 422,
+          "body_pos.csv": 422,
+          "body_quat.csv": 422,
+          "body_lin_vel.csv": 422,
+          "body_ang_vel.csv": 422
+        },
+        "max_quat_norm_error": 8.092771726087022e-07
+      }
+    }
+  ],
+  "failure_definitions": {
+    "tracking_drift": "Native player flag fell means root distance >0.5 m, NOT physical fall",
+    "low_pelvis": "Five consecutive 50 Hz frames below 60% of reference pelvis height",
+    "dds_low_pelvis": "Five consecutive 10 Hz wall-clock samples below 0.35 m during policy playback"
+  },
+  "observation_config_sha256": "8ec87088eafcafe40406f8d9ce1da886122c5e2ba5fe4bb8e610e0d5b1e86004",
+  "player_source_sha256": "6736819f850cd6704ed034ec782b094a50967ae95745bbc2ef77e5a2ea88428e",
+  "drill_source_sha256": "81f25e6c5464e21a2d9f45abe3572fb314ec8c41cf54b87bf2780c35c5f4fa8d",
+  "reference_joint_order": "IsaacLab; regenerated with upstream 04c56d2 correction on 2026-09-18",
+  "prior_dds_validation_status": "Superseded: previous CSVs used MuJoCo joint order. See docs/FOUR_MOTION_DEPLOY.md for corrected-reference results.",
+  "prior_validation_deploy_base_commit": "df34d1d8025e20962fe9c2e9f70c1b94c49e1025",
+  "integration_base_commit": "8f268832fbedfda33b57c72a3d1124068bf7fa7b"
+}

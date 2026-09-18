@@ -10,6 +10,38 @@ Every behavioural number here is still simulation. See
 [`docs/HARDWARE_RUNS.md`](docs/HARDWARE_RUNS.md), and read **Limits** before you
 get near a robot.
 
+## Latest four-motion policies (September 17 training)
+
+**[Start here: install, verify, play, and rehearse both policies](docs/FOUR_MOTION_DEPLOY.md).**
+This repository now includes the fixed-DR and no-DR ONNX models trained on
+**walking, turning, crouch hold, and side-stepping** (seed 8600, iteration 4000),
+plus all four reference clips and runner-format motions. A normal Git clone
+includes the weights; there is no separate model download or Git LFS step.
+
+```bash
+git clone https://github.com/linjiw/lucid-g1-deploy.git
+cd lucid-g1-deploy
+bash setup.sh
+source env.sh
+bash build.sh
+bash four_motion.sh check
+"$PYTHON" -m wandb login     # account with access to 16726/lucid-sonic
+bash four_motion.sh play --policy fixed_dr --motion walking
+bash four_motion.sh rehearse --policy no_dr --motion crouch_hold
+```
+
+`play` records reference-initialized MuJoCo playback. `rehearse` tests the actual
+C++/TensorRT/DDS deployment sequence. Their measured outcomes differ; read the
+[validation results and limitations](docs/FOUR_MOTION_DEPLOY.md#validation-and-limitations).
+All four exported references use the corrected IsaacLab joint order, checked
+against every source joint position and velocity before launching.
+
+The rest of this README's historical measurements and `deploy_dr` / `no_dr`
+examples describe the older three-motion, 8,000-iteration pair. The latest
+models have explicit `four_motion_...` filenames and the dedicated launcher above.
+
+## Original three-motion bundle and deployment background
+
 **[Watch the 2½-minute guided demo →](docs/demo/lucid-g1-deploy-demo.mp4)** —
 what it is, how to install it, how the DDS interface works, and a real recording
 of the deployment sequence: init → fixed stand → policy → emergency stop.

@@ -1,0 +1,9 @@
+policy,motion,nominal_no_low_pelvis,nominal_tracking_drift_s,dr_no_low_pelvis_count,dr_rollouts,direct_run
+fixed_dr,walking,True,2.48,3,3,https://wandb.ai/16726/lucid-sonic/runs/deploy4-20260917-direct_deploy-fixed_dr-walking-nominal-s8700
+fixed_dr,turning,True,1.26,3,3,https://wandb.ai/16726/lucid-sonic/runs/deploy4-20260917-direct_deploy-fixed_dr-turning-nominal-s8700
+fixed_dr,crouch_hold,True,,3,3,https://wandb.ai/16726/lucid-sonic/runs/deploy4-20260917-direct_deploy-fixed_dr-crouch_hold-nominal-s8700
+fixed_dr,side_stepping,True,1.14,3,3,https://wandb.ai/16726/lucid-sonic/runs/deploy4-20260917-direct_deploy-fixed_dr-side_stepping-nominal-s8700
+no_dr,walking,True,2.46,2,3,https://wandb.ai/16726/lucid-sonic/runs/deploy4-20260917-direct_deploy-no_dr-walking-nominal-s8700
+no_dr,turning,True,1.32,1,3,https://wandb.ai/16726/lucid-sonic/runs/deploy4-20260917-direct_deploy-no_dr-turning-nominal-s8700
+no_dr,crouch_hold,True,,2,3,https://wandb.ai/16726/lucid-sonic/runs/deploy4-20260917-direct_deploy-no_dr-crouch_hold-nominal-s8700
+no_dr,side_stepping,True,1.12,3,3,https://wandb.ai/16726/lucid-sonic/runs/deploy4-20260917-direct_deploy-no_dr-side_stepping-nominal-s8700

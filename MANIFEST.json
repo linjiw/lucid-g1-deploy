@@ -12,16 +12,29 @@
     "no_dr_s8600_g1.onnx": {
       "sha256": "580bcb8755f25b9a12e3ea7e3eb8d1cbfe7f5a70c5468d85e21d4ce2882cb65a",
       "bytes": 58086741
+    },
+    "four_motion_fixed_dr_s8600_g1.onnx": {
+      "sha256": "7be5c665980de616a4a22d5c36d9c0f4d00e74d44e32c41ead3963b9a96c855b",
+      "bytes": 58086741
+    },
+    "four_motion_no_dr_s8600_g1.onnx": {
+      "sha256": "222761c5e35901492c8a4b2dd5f229e0ddad7038d3e68c598d7c4bee4a0bbc64",
+      "bytes": 58086741
     }
   },
   "config_sha256": {
     "deploy_metadata.json": "34169d20c2e85e3574616be160a853ffc2eb9e3888f4069cf3c934cf46b8c4f3",
-    "observation_config_lucid_g1_1570.yaml": "8ec87088eafcafe40406f8d9ce1da886122c5e2ba5fe4bb8e610e0d5b1e86004"
+    "observation_config_lucid_g1_1570.yaml": "8ec87088eafcafe40406f8d9ce1da886122c5e2ba5fe4bb8e610e0d5b1e86004",
+    "four_motion_20260917.json": "a2267e2ae782105df9eaad5b84cf5eeb1a7a34c0ce77ee076bca1239a8c0667f"
   },
   "motions": {
     "crouch_idle_004__A246": 406,
     "walk_arc_cw_stop_001__A047": 432,
-    "walk_ff_stop_270_R_very_slow_001__A445_M": 457
+    "walk_ff_stop_270_R_very_slow_001__A445_M": 457,
+    "four_motion_walking": 484,
+    "four_motion_turning": 432,
+    "four_motion_crouch_hold": 406,
+    "four_motion_side_stepping": 422
   },
   "verified": [
     "the C++ runner builds from runner/ and loads this bundle",
@@ -43,7 +56,7 @@
     "that the fixed stand holds a real G1 UNSUPPORTED; the one hardware run was in a gantry harness, and in simulation it does not hold",
     "that a policy survives the step at ']' on hardware; in simulation it does not"
   ],
-  "updated": "2026-09-16",
+  "updated": "2026-09-18",
   "tensorrt": {
     "required_x86_64": "10.13",
     "required_jetson_orin": "10.7",
@@ -123,5 +136,15 @@
       "artifacts": "none -- run.sh wrote no files at the time; see commit 17491f9",
       "record": "docs/HARDWARE_RUNS.md"
     }
-  ]
+  ],
+  "historical_measurement_scope": "Existing top-level measurements describe the legacy iteration-8000 three-motion pair. Latest four-motion iteration-4000 results are in latest_policy_set.",
+  "latest_policy_set": {
+    "training_date": "2026-09-17",
+    "iteration": 4000,
+    "seed": 8600,
+    "manifest": "config/four_motion_20260917.json",
+    "guide": "docs/FOUR_MOTION_DEPLOY.md",
+    "validation": "docs/validation/four_motion_20260918.json",
+    "reference_order": "IsaacLab (corrected 2026-09-18)"
+  }
 }

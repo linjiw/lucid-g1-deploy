@@ -1,5 +1,10 @@
 # The deployment sequence
 
+For the latest four-motion model pair, start with
+[FOUR_MOTION_DEPLOY.md](FOUR_MOTION_DEPLOY.md). Its launcher selects the correct
+weights and one reference explicitly, and `rehearse` sends both `]` and `T`.
+The older `deploy_dr`/`no_dr` examples below retain their historical scope.
+
 What the runner does, in order, and what you do at each step. Everything here
 was read out of `runner/src/g1/g1_deploy_onnx_ref/src/g1_deploy_onnx_ref.cpp`
 and then executed against a MuJoCo G1 on the DDS bus — see **Rehearsing it**.
