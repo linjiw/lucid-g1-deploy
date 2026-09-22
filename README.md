@@ -10,7 +10,24 @@ Every behavioural number here is still simulation. See
 [`docs/HARDWARE_RUNS.md`](docs/HARDWARE_RUNS.md), and read **Limits** before you
 get near a robot.
 
-## Latest four-motion policies (September 17 training)
+## New dance motion and fixed-DR policy (September 22)
+
+Added **LAFAN `dance2_subject5`, 20–30 seconds**, catalog rank #9, and its
+SONIC fixed-DR policy trained from scratch with **4096 environments for 1000
+iterations** (seed 8600). The ONNX weights, source clip, and 50 Hz runner motion
+are included in a normal clone.
+
+**[New dance: verification, simulation playback, and measured limits](docs/LAFAN_RANK9_DANCE.md).**
+The policy stayed upright in four full-clip MuJoCo tests, but exceeded the 0.5 m
+path-error threshold in all four. It is an experimental checkpoint, not a
+hardware-validated policy or a successful full-clip tracking result.
+
+```bash
+source env.sh
+"$PYTHON" tools/lafan_rank9.py --lam 0 --seed 8700
+```
+
+## Four-motion policies (September 17 training)
 
 **[Start here: install, verify, play, and rehearse both policies](docs/FOUR_MOTION_DEPLOY.md).**
 This repository now includes the fixed-DR and no-DR ONNX models trained on
@@ -37,7 +54,7 @@ All four exported references use the corrected IsaacLab joint order, checked
 against every source joint position and velocity before launching.
 
 The rest of this README's historical measurements and `deploy_dr` / `no_dr`
-examples describe the older three-motion, 8,000-iteration pair. The latest
+examples describe the older three-motion, 8,000-iteration pair. The four-motion
 models have explicit `four_motion_...` filenames and the dedicated launcher above.
 
 ## Original three-motion bundle and deployment background
